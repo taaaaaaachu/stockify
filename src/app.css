@@ -1,0 +1,28 @@
+:root {
+	--bg: #f8fafc;
+	--fg: #0f172a;
+	--muted: #64748b;
+	--accent: #2563eb;
+	--danger: #dc2626;
+	--warn: #d97706;
+	--ok: #16a34a;
+	--card: #ffffff;
+	--border: #e2e8f0;
+	font-family:
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		'Hiragino Kaku Gothic ProN',
+		'Noto Sans JP',
+		sans-serif;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--fg);
+}
