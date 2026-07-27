@@ -1,0 +1,31 @@
+import { fail, redirect } from '@sveltejs/kit';
+import { createSession, verifyCredentials } from '$lib/server/auth';
+import { setSessionCookie, setHouseholdCookie } from '$lib/server/sessionCookie';
+import { db } from '$lib/server/db';
+import { listUserHouseholds } from '$lib/server/households';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ locals }) => {
+	if (locals.user) throw redirect(303, '/');
+	return {};
+};
+
+export const actions: Actions = {
+	default: async ({ request, cookies }) => {
+		const data = await request.formData();
+		const username = String(data.get('username') ?? '');
+		const password = String(data.get('password') ?? '');
+
+		const user = await verifyCredentials(username, password);
+		if (!user) {
+			return fail(401, { username, error: 'ユーザー名またはパスワードが違います。' });
+		}
+
+		const { token, expiresAt } = createSession(user.id);
+		setSessionCookie(cookies, token, expiresAt);
+		// 先頭の世帯をアクティブにしておく。
+		const households = listUserHouseholds(db, user.id);
+		if (households[0]) setHouseholdCookie(cookies, households[0].id);
+		throw redirect(303, '/');
+	}
+};

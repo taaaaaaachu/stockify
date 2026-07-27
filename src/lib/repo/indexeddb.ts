@@ -61,6 +61,12 @@ export class IndexedDbRepository implements Repository {
 		});
 	}
 
+	async refresh(): Promise<void> {
+		// ゲストはクライアントで定期便を遅延生成する。
+		const { materializeDueSubscriptions } = await import('$lib/app/subscriptions');
+		await materializeDueSubscriptions(this, Date.now());
+	}
+
 	async getSettings(): Promise<AppSettings> {
 		const db = await this.#dbPromise;
 		const stored = await db.get('settings', SETTINGS_KEY);

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { store } from '$lib/app/store.svelte';
@@ -12,10 +11,6 @@
 	import HistoryChart from '$lib/components/HistoryChart.svelte';
 
 	const id = $derived(page.params.id ?? '');
-
-	onMount(() => {
-		if (!store.loaded) store.load();
-	});
 
 	const bundle = $derived(store.bundle(id));
 	const row = $derived(bundle ? buildRow(bundle, store.settings, store.now) : null);

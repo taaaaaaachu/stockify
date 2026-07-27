@@ -1,0 +1,35 @@
+import { json, error } from '@sveltejs/kit';
+import { db } from '$lib/server/db';
+import * as stock from '$lib/server/stock';
+import { requireHousehold } from '$lib/server/apiGuard';
+import type { RequestHandler } from './$types';
+
+export const PATCH: RequestHandler = async ({ locals, params, request }) => {
+	const { householdId } = requireHousehold(locals);
+	const body = await request.json().catch(() => null);
+	const patch: Record<string, unknown> = {};
+	for (const key of [
+		'intervalDays',
+		'nextDeliveryAt',
+		'volumePerDelivery',
+		'quantityPerDelivery'
+	] as const) {
+		if (body?.[key] !== undefined) {
+			const n = Number(body[key]);
+			if (!Number.isFinite(n)) throw error(400, `${key} が不正です。`);
+			patch[key] = n;
+		}
+	}
+	if (body?.paused !== undefined) patch.paused = Boolean(body.paused);
+
+	const sub = stock.updateSubscription(db, householdId, params.id, patch);
+	if (!sub) throw error(404, '定期便が見つかりません。');
+	return json(sub);
+};
+
+export const DELETE: RequestHandler = ({ locals, params }) => {
+	const { householdId } = requireHousehold(locals);
+	if (!stock.deleteSubscription(db, householdId, params.id))
+		throw error(404, '定期便が見つかりません。');
+	return new Response(null, { status: 204 });
+};

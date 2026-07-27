@@ -1,11 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
 	import { store } from '$lib/app/store.svelte';
-
-	onMount(() => {
-		if (!store.loaded) store.load();
-	});
 
 	let name = $state('');
 	let unit = $state('ml');

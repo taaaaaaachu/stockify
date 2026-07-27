@@ -1,10 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { store } from '$lib/app/store.svelte';
-
-	onMount(() => {
-		if (!store.loaded) store.load();
-	});
 
 	let leadTime = $state('');
 	let saved = $state(false);

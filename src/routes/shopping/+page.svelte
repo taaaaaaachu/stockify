@@ -1,13 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { store } from '$lib/app/store.svelte';
 	import { buildDashboard, shoppingList } from '$lib/domain/dashboard';
 	import { formatDepletion, formatQuantity } from '$lib/format';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
-
-	onMount(() => {
-		if (!store.loaded) store.load();
-	});
 
 	const rows = $derived(shoppingList(buildDashboard(store.bundles, store.settings, store.now)));
 

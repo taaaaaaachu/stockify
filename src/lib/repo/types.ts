@@ -77,6 +77,12 @@ export interface Snapshot {
  * ゲストは IndexedDB 実装、会員はサーバー API 実装で同じ UI を動かす。
  */
 export interface Repository {
+	/**
+	 * 定期便の遅延生成を適用する(ADR 0002)。起動時に一度呼ぶ想定。
+	 * ゲストはクライアントで生成、会員はサーバーへ委譲する。
+	 */
+	refresh(): Promise<void>;
+
 	getSettings(): Promise<AppSettings>;
 	updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
 
