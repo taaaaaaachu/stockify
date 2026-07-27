@@ -1,0 +1,67 @@
+import { MS_PER_DAY } from './estimate';
+import type { Subscription } from '$lib/types';
+
+/**
+ * 一度の遅延生成でさかのぼって作る配送の上限。
+ * 長期間アプリを開かなかった場合の暴走を防ぐ安全弁。
+ */
+export const MAX_BACKFILL = 1000;
+
+/** 遅延生成で作るべき 1 回分の配送。 */
+export interface DueDelivery {
+	/** 配送日時(= その回の予定日、epoch ミリ秒)。購入の purchasedAt になる。 */
+	deliveredAt: number;
+	/** その回の総量(内容量 × 個数)。 */
+	volume: number;
+}
+
+/** 遅延生成の結果。 */
+export interface GenerationResult {
+	/** 生成すべき配送(古い順)。呼び出し側が購入として永続化する。 */
+	deliveries: DueDelivery[];
+	/** 生成後に更新すべき次回予定日(epoch ミリ秒)。 */
+	nextDeliveryAt: number;
+}
+
+/**
+ * 定期便から、現在(now)までに予定日を過ぎた配送を洗い出す(ADR 0002 の遅延生成)。
+ *
+ * - `paused` の間、または間隔が 0 以下なら何も生成しない。
+ * - 予定日 <= now の分を古い順に列挙し、次回予定日を間隔ずつ進める。
+ * - 生成数が MAX_BACKFILL に達したら打ち切り、以降の予定日は now 以降へ間引いて追いつく。
+ *
+ * この関数は純粋で副作用を持たない。永続化は呼び出し側の責務。
+ */
+export function generateDueDeliveries(
+	subscription: Pick<
+		Subscription,
+		'intervalDays' | 'nextDeliveryAt' | 'volumePerDelivery' | 'quantityPerDelivery' | 'paused'
+	>,
+	now: number
+): GenerationResult {
+	const { intervalDays, volumePerDelivery, quantityPerDelivery, paused } = subscription;
+
+	if (paused || intervalDays <= 0) {
+		return { deliveries: [], nextDeliveryAt: subscription.nextDeliveryAt };
+	}
+
+	const intervalMs = intervalDays * MS_PER_DAY;
+	const volume = volumePerDelivery * quantityPerDelivery;
+
+	const deliveries: DueDelivery[] = [];
+	let next = subscription.nextDeliveryAt;
+
+	while (next <= now && deliveries.length < MAX_BACKFILL) {
+		deliveries.push({ deliveredAt: next, volume });
+		next += intervalMs;
+	}
+
+	// 打ち切った場合は、次回予定日を now より後まで間引いて追いつかせる
+	// (取りこぼした分の再生成を防ぐ)。
+	if (next <= now) {
+		const missedIntervals = Math.floor((now - next) / intervalMs) + 1;
+		next += missedIntervals * intervalMs;
+	}
+
+	return { deliveries, nextDeliveryAt: next };
+}
