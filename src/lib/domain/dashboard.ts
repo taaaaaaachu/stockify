@@ -22,6 +22,10 @@ export interface DashboardRow {
 	status: StockStatus;
 	/** 枯渇までの残り日数(切り捨てない実数)。推定不能や算出不可なら null。 */
 	daysUntilDepletion: number | null;
+	/** 残量バーの満量基準(購入内容量の最大値)。購入が無ければ null。 */
+	capacity: number | null;
+	/** 残量の割合(0〜1)。capacity か残量が無ければ null。 */
+	remainingFraction: number | null;
 }
 
 function hasActiveSubscription(bundle: ItemBundle): boolean {
@@ -52,12 +56,23 @@ export function buildRow(bundle: ItemBundle, settings: AppSettings, now: number)
 	const daysUntilDepletion =
 		est.depletionAt !== null ? (est.depletionAt - now) / MS_PER_DAY : null;
 
+	const capacity =
+		bundle.purchases.length > 0
+			? Math.max(...bundle.purchases.map((p) => p.volume))
+			: null;
+	const remainingFraction =
+		capacity !== null && capacity > 0 && est.remainingClamped !== null
+			? Math.min(1, est.remainingClamped / capacity)
+			: null;
+
 	return {
 		item: bundle.item,
 		estimate: est,
 		hasActiveSubscription: active,
 		status: statusOf(est, now),
-		daysUntilDepletion
+		daysUntilDepletion,
+		capacity,
+		remainingFraction
 	};
 }
 
