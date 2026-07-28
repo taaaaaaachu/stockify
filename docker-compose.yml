@@ -19,7 +19,9 @@ services:
       # 通知評価cron(/api/cron/notify)の共有シークレット。
       - CRON_SECRET=${CRON_SECRET}
     volumes:
-      - db-data:/data
+      # バインドマウント: SQLite はプロジェクト直下 data/ に置き、File Station で
+      # そのままバックアップ/リストアできるようにする(SSH 不要)。
+      - ./data:/data
     # 既定では外部ポートを公開せず、cloudflared 経由でのみ到達させる。
     expose:
       - "3000"
@@ -51,6 +53,3 @@ services:
         apk add --no-cache curl >/dev/null
         printf '0 0 * * * curl -s -X POST -H "Authorization: Bearer %s" http://app:3000/api/cron/notify >/dev/null 2>&1\n' "$$CRON_SECRET" > /etc/crontabs/root
         exec crond -f -l 8
-
-volumes:
-  db-data:
