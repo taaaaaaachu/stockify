@@ -1,0 +1,56 @@
+# Synology NAS 上で動かす想定の構成。
+# app(SvelteKit/adapter-node)を cloudflared 経由で外部公開し、
+# notify-cron が毎日 /api/cron/notify を叩いて購入リマインドを送る。
+services:
+  app:
+    build: .
+    image: stockify:latest
+    restart: "no"
+    environment:
+      # adapter-node がリバースプロキシ配下で form action / CSRF 検証に使う公開オリジン。
+      # 自分のサブドメインに合わせて変更する。
+      - ORIGIN=${ORIGIN:-https://stock.example.com}
+      - DATABASE_PATH=/data/app.sqlite
+      - PORT=3000
+      # Web Push(VAPID)。`npx web-push generate-vapid-keys` で生成し .env に置く。
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@example.com}
+      # 通知評価cron(/api/cron/notify)の共有シークレット。
+      - CRON_SECRET=${CRON_SECRET}
+    volumes:
+      - db-data:/data
+    # 既定では外部ポートを公開せず、cloudflared 経由でのみ到達させる。
+    expose:
+      - "3000"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: "no"
+    # Cloudflare Zero Trust ダッシュボードで発行した Tunnel トークンを .env に置く。
+    # Public Hostname のサービスは http://app:3000 に向ける。
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - app
+
+  # 通知評価cron: 毎日 00:00 UTC(= 09:00 JST)に app の通知エンドポイントを叩く。
+  # busybox crond を使う軽量コンテナ。CRON_SECRET を Bearer トークンに使う。
+  notify-cron:
+    image: alpine:3.20
+    restart: "no"
+    depends_on:
+      - app
+    environment:
+      - CRON_SECRET=${CRON_SECRET}
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache curl >/dev/null
+        printf '0 0 * * * curl -s -X POST -H "Authorization: Bearer %s" http://app:3000/api/cron/notify >/dev/null 2>&1\n' "$$CRON_SECRET" > /etc/crontabs/root
+        exec crond -f -l 8
+
+volumes:
+  db-data:

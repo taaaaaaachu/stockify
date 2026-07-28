@@ -1,0 +1,30 @@
+# ローカルでの動作確認専用。NAS 本番(docker-compose.yml)とは別物。
+# cloudflared は使わず、ポートを直接公開し、ORIGIN を localhost にする。
+#
+#   docker compose -f docker-compose.local.yml up --build
+#   → http://localhost:3000
+#
+# 通知cronは含めない(必要なら手動で叩く):
+#   curl -X POST -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/cron/notify
+services:
+  app:
+    build: .
+    image: stockify:local
+    restart: "no"
+    environment:
+      # ローカルは http://localhost:3000 でアクセスするので ORIGIN もそれに合わせる。
+      # (本番 URL のままだとログイン等の POST が CSRF で 403 になる)
+      - ORIGIN=http://localhost:3000
+      - DATABASE_PATH=/data/app.sqlite
+      - PORT=3000
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@example.com}
+      - CRON_SECRET=${CRON_SECRET:-dev-cron-secret}
+    ports:
+      - "3000:3000"
+    volumes:
+      - db-data-local:/data
+
+volumes:
+  db-data-local:
