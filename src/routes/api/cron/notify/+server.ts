@@ -1,11 +1,12 @@
 import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db';
-import { notifyDueRestocks } from '$lib/server/push';
+import { notifyDueRestocks, sendWebPush, NOTIFY_COOLDOWN_MS } from '$lib/server/push';
 import type { RequestHandler } from './$types';
 
 /**
- * 通知評価cron。外部スケジューラ(Docker cron 等)から定期的に叩く。
+ * 通知評価cron。外部スケジューラ(Docker cron 等)から 15 分ごとに叩く。
+ * 各ユーザーの設定時刻スロットに該当し、購入推奨品目があれば通知する。
  * CRON_SECRET を Authorization: Bearer <secret> または x-cron-secret で検証する。
  */
 export const POST: RequestHandler = async ({ request }) => {
@@ -16,6 +17,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	const provided = bearer ?? request.headers.get('x-cron-secret');
 	if (provided !== secret) throw error(401, '認証に失敗しました。');
 
-	const result = await notifyDueRestocks(db, Date.now());
+	// サーバーのローカル時刻(compose で TZ=Asia/Tokyo を設定)での 0:00 からの分。
+	const nowDate = new Date();
+	const nowMinuteOfDay = nowDate.getHours() * 60 + nowDate.getMinutes();
+
+	const result = await notifyDueRestocks(db, nowDate.getTime(), {
+		send: sendWebPush,
+		cooldownMs: NOTIFY_COOLDOWN_MS,
+		nowMinuteOfDay
+	});
 	return json(result);
 };

@@ -15,6 +15,7 @@ export interface AuthUser {
 	id: string;
 	username: string;
 	instanceRole: InstanceRole;
+	notifyMinuteOfDay: number;
 }
 export interface HouseholdSummary {
 	id: string;
@@ -82,6 +83,9 @@ class Store {
 	}
 
 	async reload(): Promise<void> {
+		// 「今」を毎回更新する。直前に Date.now() で登録した購入が now より後に
+		// なって推定から除外される(=即・在庫切れ表示)のを防ぐ。
+		this.now = Date.now();
 		const [bundles, settings] = await Promise.all([
 			this.repo.listBundles(),
 			this.repo.getSettings()

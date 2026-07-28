@@ -44,3 +44,23 @@ export function formatDepletion(depletionAt: number | null, now: number): string
 	if (depletionAt === null) return '—';
 	return formatDaysUntil((depletionAt - now) / MS_PER_DAY);
 }
+
+/** `<input type="date">` 用のローカル日付文字列(YYYY-MM-DD)。 */
+export function localDateInput(d: Date = new Date()): string {
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, '0');
+	const day = String(d.getDate()).padStart(2, '0');
+	return `${y}-${m}-${day}`;
+}
+
+/**
+ * 日付入力(YYYY-MM-DD)を epoch ミリ秒へ変換する。
+ * **当日**を選んだ場合は現在時刻(now)を返す。これにより「空になった」を押した直後に
+ * 当日の購入を追加しても、購入が使い切りより後になり、即・使い切り扱いにならない。
+ * 過去日の場合はその日のローカル 0:00 を返す。
+ */
+export function dateInputToTimestamp(dateStr: string, now: Date = new Date()): number {
+	if (dateStr === localDateInput(now)) return now.getTime();
+	const t = new Date(`${dateStr}T00:00:00`).getTime();
+	return Number.isFinite(t) ? t : now.getTime();
+}

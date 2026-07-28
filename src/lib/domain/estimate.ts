@@ -3,6 +3,13 @@ import type { Purchase, RanOutEvent, RemainingAdjustment, StockItem } from '$lib
 /** 1 日のミリ秒数。 */
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * 履歴からレートを逆算するのに必要な最小の観測期間(日)。
+ * これ未満しか離れていない購入/使い切りは、消費レートの情報を持たないとみなし
+ * (作成直後のまとめ買い等)、仮の値へフォールバックする。
+ */
+export const MIN_SPAN_DAYS = 1;
+
 /** 推定に必要な、ある品目のスナップショット。 */
 export interface EstimateInput {
 	/** 仮の値(初回内容量を約 N 日で使い切る)。null なら未設定。 */
@@ -67,7 +74,7 @@ export function consumptionRatePerDay(input: EstimateInput): number | null {
 		const first = ranOuts[0].at;
 		const last = ranOuts[ranOuts.length - 1].at;
 		const days = (last - first) / MS_PER_DAY;
-		if (days > 0) {
+		if (days >= MIN_SPAN_DAYS) {
 			const consumed = sumVolume(purchases, (p) => p.purchasedAt > first && p.purchasedAt <= last);
 			if (consumed > 0) return consumed / days;
 		}
@@ -78,7 +85,9 @@ export function consumptionRatePerDay(input: EstimateInput): number | null {
 		const first = purchases[0].purchasedAt;
 		const last = purchases[purchases.length - 1].purchasedAt;
 		const days = (last - first) / MS_PER_DAY;
-		if (days > 0) {
+		// 期間が短すぎる(=作成直後にまとめて買い足した等)と極小の時間で割って
+		// レートが爆発するため、最低期間を満たすまでは採用せず仮の値へ落とす。
+		if (days >= MIN_SPAN_DAYS) {
 			const total = sumVolume(purchases, () => true);
 			const lastVolume = purchases[purchases.length - 1].volume;
 			const consumed = total - lastVolume;

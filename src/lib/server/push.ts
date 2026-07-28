@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { env } from '$env/dynamic/private';
 import type { Db } from './db';
-import { pushSubscriptions, type PushSubscriptionRow } from './db/schema';
+import { pushSubscriptions, users, type PushSubscriptionRow } from './db/schema';
 import { listUserHouseholds } from './households';
 import { listBundles, getSettings } from './stock';
 import { buildDashboard, shoppingList } from '$lib/domain/dashboard';
@@ -118,29 +118,59 @@ export function dueItemNamesForUser(db: Db, userId: string, now: number): string
 	return names;
 }
 
+/** 通知スロットの長さ(分)。 */
+export const NOTIFY_SLOT_MINUTES = 15;
+
+/**
+ * ユーザーの設定時刻(userMinute)が、現在の 15 分スロットに該当するか。
+ * 現在分をスロット幅で切り捨てた値と一致すれば送信対象。
+ */
+export function matchesNotifySlot(
+	userMinute: number,
+	nowMinuteOfDay: number,
+	slot = NOTIFY_SLOT_MINUTES
+): boolean {
+	return Math.floor(nowMinuteOfDay / slot) * slot === userMinute;
+}
+
 export interface NotifyDeps {
 	send: (
 		row: Pick<PushSubscriptionRow, 'endpoint' | 'p256dh' | 'auth'>,
 		payload: NotificationPayload
 	) => Promise<SendResult>;
 	cooldownMs: number;
+	/**
+	 * 現在時刻の「0:00 からの分」。指定すると、各ユーザーの設定時刻スロットに
+	 * 該当するときだけ送る。省略時は時刻ゲートなし(常に評価)。
+	 */
+	nowMinuteOfDay?: number;
 }
 
 /**
  * 全購読を評価し、購入推奨に達した品目があるユーザーへ通知する(通知評価cron)。
- * クールダウン内の端末はスキップ。失効した購読は削除する。1日1回程度の実行を想定。
+ * nowMinuteOfDay 指定時は各ユーザーの設定時刻スロットのみ対象。
+ * クールダウン内の端末はスキップ。失効した購読は削除する。
  */
 export async function notifyDueRestocks(
 	db: Db,
 	now: number,
 	deps: NotifyDeps = { send: sendWebPush, cooldownMs: NOTIFY_COOLDOWN_MS }
 ): Promise<{ notified: number; skipped: number; removed: number }> {
-	const subs = db.select().from(pushSubscriptions).all();
+	const subs = db
+		.select({ sub: pushSubscriptions, notifyMinuteOfDay: users.notifyMinuteOfDay })
+		.from(pushSubscriptions)
+		.innerJoin(users, eq(pushSubscriptions.userId, users.id))
+		.all();
 	let notified = 0;
 	let skipped = 0;
 	let removed = 0;
 
-	for (const sub of subs) {
+	for (const { sub, notifyMinuteOfDay } of subs) {
+		// 時刻ゲート: 指定時は設定スロットに該当するときだけ。
+		if (deps.nowMinuteOfDay !== undefined && !matchesNotifySlot(notifyMinuteOfDay, deps.nowMinuteOfDay)) {
+			skipped++;
+			continue;
+		}
 		if (sub.lastNotifiedAt !== null && now - sub.lastNotifiedAt < deps.cooldownMs) {
 			skipped++;
 			continue;

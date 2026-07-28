@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { store } from '$lib/app/store.svelte';
+	import { localDateInput, dateInputToTimestamp } from '$lib/format';
 
 	let name = $state('');
 	let unit = $state('ml');
@@ -8,7 +9,7 @@
 	let leadTime = $state('');
 	// 初回購入(内容量+日時)と仮の値をまとめて登録できるようにする。
 	let firstVolume = $state('');
-	let firstDate = $state(new Date().toISOString().slice(0, 10));
+	let firstDate = $state(localDateInput());
 	let firstPrice = $state('');
 	let provisionalDays = $state('30');
 	let saving = $state(false);
@@ -61,7 +62,7 @@
 				itemId: id,
 				volume: vol,
 				price: parseNumberOrNull(firstPrice),
-				purchasedAt: new Date(firstDate).getTime(),
+				purchasedAt: dateInputToTimestamp(firstDate),
 				source: 'manual'
 			});
 			await goto(`/items/${id}`);

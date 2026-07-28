@@ -5,7 +5,14 @@
 	import { buildRow } from '$lib/domain/dashboard';
 	import { estimateInputFromItem } from '$lib/domain/estimate';
 	import { remainingTrajectory } from '$lib/domain/trajectory';
-	import { formatDate, formatDepletion, formatNumber, formatQuantity } from '$lib/format';
+	import {
+		formatDate,
+		formatDepletion,
+		formatNumber,
+		formatQuantity,
+		localDateInput,
+		dateInputToTimestamp
+	} from '$lib/format';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import RemainingBar from '$lib/components/RemainingBar.svelte';
 	import HistoryChart from '$lib/components/HistoryChart.svelte';
@@ -46,18 +53,26 @@
 	}
 
 	// --- 購入追加 ---
+	// 直近の購入(空欄で追加したときの既定値・プレースホルダーに使う)。
+	const lastPurchase = $derived(purchasesDesc[0]);
 	let pVolume = $state('');
-	let pDate = $state(new Date().toISOString().slice(0, 10));
+	let pDate = $state(localDateInput());
 	let pPrice = $state('');
 	async function addPurchase(e: SubmitEvent) {
 		e.preventDefault();
-		const v = numOrNull(pVolume);
+		// 内容量が空なら前回の購入と同じ量にする。
+		let v = numOrNull(pVolume);
+		if (v === null) v = lastPurchase?.volume ?? null;
 		if (v === null || v <= 0) return;
+		// 価格が空なら前回の価格を引き継ぐ。
+		let price = numOrNull(pPrice);
+		if (price === null) price = lastPurchase?.price ?? null;
 		await store.addPurchase({
 			itemId: id,
 			volume: v,
-			price: numOrNull(pPrice),
-			purchasedAt: new Date(pDate).getTime(),
+			price,
+			// 当日なら現在時刻。使い切り直後の購入が即・使い切り扱いにならないように。
+			purchasedAt: dateInputToTimestamp(pDate),
 			source: 'manual'
 		});
 		pVolume = '';
@@ -209,13 +224,25 @@
 
 		<form onsubmit={addPurchase} style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:end;">
 			<label style={inputRow}><span style="font-size:0.85rem;">内容量</span>
-				<input bind:value={pVolume} type="number" step="any" min="0" placeholder="300" required /></label
+				<input
+					bind:value={pVolume}
+					type="number"
+					step="any"
+					min="0"
+					placeholder={lastPurchase ? `${lastPurchase.volume}(前回と同じ)` : '300'}
+				/></label
 			>
 			<label style={inputRow}><span style="font-size:0.85rem;">購入日</span>
 				<input bind:value={pDate} type="date" required /></label
 			>
 			<label style={inputRow}><span style="font-size:0.85rem;">価格(任意)</span>
-				<input bind:value={pPrice} type="number" step="any" min="0" placeholder="250" /></label
+				<input
+					bind:value={pPrice}
+					type="number"
+					step="any"
+					min="0"
+					placeholder={lastPurchase?.price != null ? `${lastPurchase.price}` : '250'}
+				/></label
 			>
 			<button
 				type="submit"

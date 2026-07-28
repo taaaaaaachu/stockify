@@ -8,6 +8,7 @@ import {
 	deleteSubscription,
 	dueItemNamesForUser,
 	notifyDueRestocks,
+	matchesNotifySlot,
 	type SendResult
 } from './push';
 import { pushSubscriptions } from './db/schema';
@@ -110,5 +111,28 @@ describe('notifyDueRestocks', () => {
 		const res = await notifyDueRestocks(db, day(25), { send, cooldownMs: 1000 });
 		expect(res.removed).toBe(1);
 		expect(db.select().from(pushSubscriptions).all()).toHaveLength(0);
+	});
+
+	it('時刻スロットに該当するときだけ送る', async () => {
+		seedDueItem();
+		saveSubscription(db, userId, sub('https://push/1'));
+		const send = vi.fn(async (): Promise<SendResult> => 'ok');
+		// ユーザーの既定通知時刻は 540(09:00)。
+		const noMatch = await notifyDueRestocks(db, day(25), { send, cooldownMs: 1000, nowMinuteOfDay: 600 });
+		expect(noMatch.notified).toBe(0);
+		expect(send).not.toHaveBeenCalled();
+
+		const match = await notifyDueRestocks(db, day(25), { send, cooldownMs: 1000, nowMinuteOfDay: 540 });
+		expect(match.notified).toBe(1);
+		expect(send).toHaveBeenCalledOnce();
+	});
+});
+
+describe('matchesNotifySlot', () => {
+	it('現在分を15分スロットに丸めてユーザー設定時刻と一致すれば true', () => {
+		expect(matchesNotifySlot(540, 540)).toBe(true); // 09:00 ちょうど
+		expect(matchesNotifySlot(540, 547)).toBe(true); // 09:07 → スロット540
+		expect(matchesNotifySlot(540, 555)).toBe(false); // 09:15 → スロット555
+		expect(matchesNotifySlot(600, 540)).toBe(false);
 	});
 });

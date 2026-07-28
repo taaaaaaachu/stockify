@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `notify_minute_of_day` integer DEFAULT 540 NOT NULL;

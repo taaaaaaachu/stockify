@@ -97,6 +97,25 @@ describe('consumptionRatePerDay', () => {
 		expect(consumptionRatePerDay(input)).toBeCloseTo(50, 10);
 	});
 
+	it('ごく短時間の2購入(期間 < 1日)ではレートが爆発せず仮の値へ落ちる', () => {
+		// 同日にほぼ同時刻の2購入。長期平均だと極小時間で割って爆発する。
+		const input = baseInput({
+			purchases: [purchase(0, 500), { ...purchase(0, 500, 'p2'), purchasedAt: day(0) + 60_000 }],
+			provisionalDaysToDeplete: 20
+		});
+		// 仮の値 500/20 = 25 を採用(爆発した巨大値にならない)。
+		expect(consumptionRatePerDay(input)).toBeCloseTo(25, 6);
+	});
+
+	it('1日以上離れた2購入なら長期平均を採用する', () => {
+		const input = baseInput({
+			purchases: [purchase(0, 500), purchase(2, 500)],
+			provisionalDaysToDeplete: 20
+		});
+		// (1000 − 500) / 2日 = 250/日
+		expect(consumptionRatePerDay(input)).toBeCloseTo(250, 6);
+	});
+
 	it('内容量 0 の初回では仮の値を採らず null', () => {
 		const input = baseInput({
 			purchases: [purchase(0, 0)],

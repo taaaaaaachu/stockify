@@ -10,6 +10,11 @@ export const users = sqliteTable('users', {
 	passwordHash: text('password_hash').notNull(),
 	/** インスタンス全体のロール。ブートストラップした最初の1人が super_admin。 */
 	instanceRole: text('instance_role').notNull().$type<InstanceRole>().default('user'),
+	/**
+	 * 購入リマインドを送る時刻(ローカル 0:00 からの分。15分刻み、0〜1439)。
+	 * 既定 540 = 09:00。cron はこの時刻の 15 分スロットに該当したときだけ送る。
+	 */
+	notifyMinuteOfDay: integer('notify_minute_of_day').notNull().default(540),
 	createdAt: integer('created_at').notNull()
 });
 

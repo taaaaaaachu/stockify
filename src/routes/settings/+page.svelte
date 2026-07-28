@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
 	import { store } from '$lib/app/store.svelte';
 	import {
 		pushSupported,
@@ -65,6 +66,30 @@
 			pushBusy = false;
 		}
 	}
+
+	// --- 通知時刻(15分刻み) ---
+	function minuteToTime(m: number): string {
+		const h = String(Math.floor(m / 60)).padStart(2, '0');
+		const min = String(m % 60).padStart(2, '0');
+		return `${h}:${min}`;
+	}
+	// input[type=time] の "HH:MM" 現在値(ユーザー設定)。
+	const notifyTime = $derived(minuteToTime(store.user?.notifyMinuteOfDay ?? 540));
+	let notifyTimeSaved = $state(false);
+
+	async function changeNotifyTime(e: Event) {
+		const [h, m] = (e.currentTarget as HTMLInputElement).value.split(':').map(Number);
+		if (Number.isNaN(h) || Number.isNaN(m)) return;
+		const minuteOfDay = h * 60 + m;
+		await fetch('/api/notify-time', {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ minuteOfDay })
+		});
+		await invalidateAll();
+		notifyTimeSaved = true;
+		setTimeout(() => (notifyTimeSaved = false), 1500);
+	}
 </script>
 
 <h1 style="font-size:1.3rem;">設定</h1>
@@ -119,6 +144,17 @@
 			<span style="margin-left:0.5rem; color:var(--muted); font-size:0.85rem;">
 				現在: {pushState === 'on' ? 'オン' : 'オフ'}
 			</span>
+
+			<div style="margin-top:1rem;">
+				<label style="display:flex; flex-direction:column; gap:0.25rem; max-width:12rem;">
+					<span>通知する時刻</span>
+					<input type="time" step="900" value={notifyTime} onchange={changeNotifyTime} />
+					<small style="color:var(--muted);"
+						>15分刻み。この時刻ごろに、買うべき品目があれば通知します。</small
+					>
+				</label>
+				{#if notifyTimeSaved}<span style="color:var(--ok); font-size:0.85rem;">保存しました</span>{/if}
+			</div>
 		{/if}
 		{#if pushError}<p style="color:var(--danger); margin:0.5rem 0 0;">{pushError}</p>{/if}
 	</section>

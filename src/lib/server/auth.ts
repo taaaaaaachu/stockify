@@ -51,7 +51,7 @@ export async function verifyCredentials(
 }
 
 export interface SessionValidation {
-	user: Pick<UserRow, 'id' | 'username' | 'instanceRole'>;
+	user: Pick<UserRow, 'id' | 'username' | 'instanceRole' | 'notifyMinuteOfDay'>;
 	/** Cookie の有効期限を更新すべき場合の新しい期限(延長時のみ)。 */
 	renewedExpiresAt: number | null;
 }
@@ -76,7 +76,12 @@ export function validateSessionToken(token: string): SessionValidation | null {
 	}
 
 	const user = db
-		.select({ id: users.id, username: users.username, instanceRole: users.instanceRole })
+		.select({
+			id: users.id,
+			username: users.username,
+			instanceRole: users.instanceRole,
+			notifyMinuteOfDay: users.notifyMinuteOfDay
+		})
 		.from(users)
 		.where(eq(users.id, row.userId))
 		.get();

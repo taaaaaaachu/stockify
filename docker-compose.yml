@@ -12,6 +12,8 @@ services:
       - ORIGIN=${ORIGIN:-https://stock.example.com}
       - DATABASE_PATH=/data/app.sqlite
       - PORT=3000
+      # 通知時刻の判定はサーバーのローカル時刻で行うため JST に固定する。
+      - TZ=Asia/Tokyo
       # Web Push(VAPID)。`npx web-push generate-vapid-keys` で生成し .env に置く。
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
@@ -37,7 +39,8 @@ services:
     depends_on:
       - app
 
-  # 通知評価cron: 毎日 00:00 UTC(= 09:00 JST)に app の通知エンドポイントを叩く。
+  # 通知評価cron: 15分ごとに app の通知エンドポイントを叩く。
+  # 実際に送るかは app 側で各ユーザーの設定時刻スロットに該当するかで判断する。
   # busybox crond を使う軽量コンテナ。CRON_SECRET を Bearer トークンに使う。
   notify-cron:
     image: alpine:3.20
@@ -51,5 +54,5 @@ services:
       - -c
       - |
         apk add --no-cache curl >/dev/null
-        printf '0 0 * * * curl -s -X POST -H "Authorization: Bearer %s" http://app:3000/api/cron/notify >/dev/null 2>&1\n' "$$CRON_SECRET" > /etc/crontabs/root
+        printf '*/15 * * * * curl -s -X POST -H "Authorization: Bearer %s" http://app:3000/api/cron/notify >/dev/null 2>&1\n' "$$CRON_SECRET" > /etc/crontabs/root
         exec crond -f -l 8

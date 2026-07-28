@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { formatDate, formatNumber, formatQuantity, formatDaysUntil, formatDepletion } from './format';
+import {
+	formatDate,
+	formatNumber,
+	formatQuantity,
+	formatDaysUntil,
+	formatDepletion,
+	localDateInput,
+	dateInputToTimestamp
+} from './format';
 import { MS_PER_DAY } from '$lib/domain/estimate';
 
 describe('formatDate', () => {
@@ -55,5 +63,22 @@ describe('formatDepletion', () => {
 	});
 	it('null は —', () => {
 		expect(formatDepletion(null, 0)).toBe('—');
+	});
+});
+
+describe('localDateInput', () => {
+	it('ローカル日付を YYYY-MM-DD にする', () => {
+		expect(localDateInput(new Date(2026, 6, 5, 21, 30))).toBe('2026-07-05');
+	});
+});
+
+describe('dateInputToTimestamp', () => {
+	it('当日を選んだら現在時刻(now)を返す', () => {
+		const now = new Date(2026, 6, 5, 21, 0, 0);
+		expect(dateInputToTimestamp('2026-07-05', now)).toBe(now.getTime());
+	});
+	it('過去日はその日のローカル0:00を返す', () => {
+		const now = new Date(2026, 6, 5, 21, 0, 0);
+		expect(dateInputToTimestamp('2026-07-01', now)).toBe(new Date(2026, 6, 1, 0, 0, 0).getTime());
 	});
 });

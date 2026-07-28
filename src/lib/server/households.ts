@@ -262,6 +262,7 @@ export function registerUser(
 				username: params.username.trim(),
 				passwordHash: params.passwordHash,
 				instanceRole: params.requireInvite ? 'user' : 'super_admin',
+				notifyMinuteOfDay: 540,
 				createdAt: now
 			};
 			try {

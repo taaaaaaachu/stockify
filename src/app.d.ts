@@ -5,7 +5,12 @@ declare global {
 	namespace App {
 		// interface Error {}
 		interface Locals {
-			user: { id: string; username: string; instanceRole: InstanceRole } | null;
+			user: {
+				id: string;
+				username: string;
+				instanceRole: InstanceRole;
+				notifyMinuteOfDay: number;
+			} | null;
 			/** ログイン中ユーザーが所属する世帯の一覧。 */
 			households: { id: string; name: string; role: HouseholdRole; defaultLeadTimeDays: number }[];
 			/** 現在選択中の世帯。未ログインや世帯無しなら null。 */
