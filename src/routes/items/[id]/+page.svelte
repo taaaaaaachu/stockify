@@ -355,7 +355,12 @@
 					<label style={inputRow}><span style="font-size:0.85rem;">単位</span><input bind:value={eUnit} required /></label>
 				</div>
 				<div style="display:flex; gap:0.6rem;">
-					<label style={inputRow}><span style="font-size:0.85rem;">カテゴリ / 保管場所</span><input bind:value={eCategory} /></label>
+					<label style={inputRow}><span style="font-size:0.85rem;">カテゴリ / 保管場所</span><input bind:value={eCategory} list="category-options" /></label>
+					<datalist id="category-options">
+						{#each store.categories as c (c)}
+							<option value={c}></option>
+						{/each}
+					</datalist>
 					<label style={inputRow}><span style="font-size:0.85rem;">リードタイム(日)</span><input bind:value={eLead} type="number" step="any" min="0" placeholder="既定" /></label>
 				</div>
 				<label style={inputRow}><span style="font-size:0.85rem;">仮の値: 約何日で使い切る</span><input bind:value={eProv} type="number" step="any" min="0" /></label>

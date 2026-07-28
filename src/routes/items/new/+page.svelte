@@ -88,7 +88,12 @@
 		</label>
 		<label style="display:flex; flex-direction:column; gap:0.25rem; flex:1;">
 			<span>カテゴリ / 保管場所(任意)</span>
-			<input bind:value={category} placeholder="キッチン" />
+			<input bind:value={category} placeholder="キッチン" list="category-options" />
+			<datalist id="category-options">
+				{#each store.categories as c (c)}
+					<option value={c}></option>
+				{/each}
+			</datalist>
 		</label>
 	</div>
 

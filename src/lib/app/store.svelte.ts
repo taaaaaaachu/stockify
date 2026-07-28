@@ -98,6 +98,15 @@ class Store {
 		return this.bundles.find((b) => b.item.id === itemId);
 	}
 
+	/** 既存の品目に付いているカテゴリ/保管場所の一覧(重複なし・五十音順)。入力候補に使う。 */
+	get categories(): string[] {
+		const set = new Set<string>();
+		for (const b of this.bundles) {
+			if (b.item.category) set.add(b.item.category);
+		}
+		return [...set].sort((a, b) => a.localeCompare(b, 'ja'));
+	}
+
 	// --- 品目 ---
 	async addItem(input: StockItemInput): Promise<string> {
 		const item = await this.repo.createItem(input);
