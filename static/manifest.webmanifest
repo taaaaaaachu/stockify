@@ -1,0 +1,19 @@
+{
+	"name": "Stockify",
+	"short_name": "Stockify",
+	"description": "詰替え・消耗品の残量を購入履歴から推定し、購入推奨日を教えるアプリ",
+	"start_url": "/",
+	"scope": "/",
+	"display": "standalone",
+	"background_color": "#f8fafc",
+	"theme_color": "#2563eb",
+	"lang": "ja",
+	"icons": [
+		{
+			"src": "/icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any maskable"
+		}
+	]
+}

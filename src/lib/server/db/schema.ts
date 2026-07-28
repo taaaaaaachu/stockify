@@ -153,7 +153,29 @@ export const subscriptions = sqliteTable(
 	(t) => [index('subscriptions_item_idx').on(t.itemId)]
 );
 
+/**
+ * Web Push の購読。ユーザーの端末(ブラウザ)ごとに 1 行。
+ * endpoint をユニークにして同一端末の重複購読を防ぐ。
+ */
+export const pushSubscriptions = sqliteTable(
+	'push_subscriptions',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		endpoint: text('endpoint').notNull().unique(),
+		p256dh: text('p256dh').notNull(),
+		auth: text('auth').notNull(),
+		createdAt: integer('created_at').notNull(),
+		/** 最後に通知を送った日時(epoch ミリ秒)。1日1回に間引くために使う。 */
+		lastNotifiedAt: integer('last_notified_at')
+	},
+	(t) => [index('push_subscriptions_user_idx').on(t.userId)]
+);
+
 export type UserRow = typeof users.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type HouseholdRow = typeof households.$inferSelect;
 export type MembershipRow = typeof memberships.$inferSelect;

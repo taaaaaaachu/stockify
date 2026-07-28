@@ -1,5 +1,13 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { store } from '$lib/app/store.svelte';
+	import {
+		pushSupported,
+		pushConfigured,
+		isSubscribed,
+		enablePush,
+		disablePush
+	} from '$lib/app/push';
 
 	let leadTime = $state('');
 	let saved = $state(false);
@@ -18,6 +26,44 @@
 		await store.setDefaultLeadTime(n);
 		saved = true;
 		setTimeout(() => (saved = false), 1500);
+	}
+
+	// --- 通知 ---
+	type PushState = 'loading' | 'unsupported' | 'unconfigured' | 'on' | 'off';
+	let pushState = $state<PushState>('loading');
+	let pushBusy = $state(false);
+	let pushError = $state('');
+
+	async function refreshPushState() {
+		if (!pushSupported()) {
+			pushState = 'unsupported';
+			return;
+		}
+		if (!(await pushConfigured())) {
+			pushState = 'unconfigured';
+			return;
+		}
+		pushState = (await isSubscribed()) ? 'on' : 'off';
+	}
+
+	onMount(refreshPushState);
+
+	async function togglePush() {
+		pushBusy = true;
+		pushError = '';
+		try {
+			if (pushState === 'on') {
+				await disablePush();
+			} else {
+				const ok = await enablePush();
+				if (!ok) pushError = '通知の許可が得られませんでした。';
+			}
+			await refreshPushState();
+		} catch (e) {
+			pushError = e instanceof Error ? e.message : '通知の設定に失敗しました。';
+		} finally {
+			pushBusy = false;
+		}
 	}
 </script>
 
@@ -43,4 +89,37 @@
 		</button>
 		{#if saved}<span style="color:var(--ok);">保存しました</span>{/if}
 	</form>
+
+	<section style="margin-top:1.5rem; max-width:26rem;">
+		<h2 style="font-size:1.05rem;">購入リマインド通知</h2>
+		{#if !store.user}
+			<p style="color:var(--muted); font-size:0.9rem;">
+				通知は会員モードで使えます。<a href="/login">ログイン</a>してください。
+			</p>
+		{:else if pushState === 'loading'}
+			<p style="color:var(--muted);">確認中…</p>
+		{:else if pushState === 'unsupported'}
+			<p style="color:var(--muted); font-size:0.9rem;">この端末/ブラウザは通知に対応していません。</p>
+		{:else if pushState === 'unconfigured'}
+			<p style="color:var(--muted); font-size:0.9rem;">
+				サーバーで通知が設定されていません(VAPID 未設定)。
+			</p>
+		{:else}
+			<p style="color:var(--muted); font-size:0.9rem;">
+				購入推奨日に達した品目を、アプリを開いていなくても通知します。
+			</p>
+			<button
+				onclick={togglePush}
+				disabled={pushBusy}
+				style="border:none; border-radius:0.5rem; padding:0.5rem 0.9rem; cursor:pointer; color:#fff;
+				       background:{pushState === 'on' ? 'var(--danger)' : 'var(--accent)'};"
+			>
+				{pushState === 'on' ? '通知をオフにする' : '通知をオンにする'}
+			</button>
+			<span style="margin-left:0.5rem; color:var(--muted); font-size:0.85rem;">
+				現在: {pushState === 'on' ? 'オン' : 'オフ'}
+			</span>
+		{/if}
+		{#if pushError}<p style="color:var(--danger); margin:0.5rem 0 0;">{pushError}</p>{/if}
+	</section>
 {/if}
