@@ -100,6 +100,8 @@ class Store {
 
 	/** 既存の品目に付いているカテゴリ/保管場所の一覧(重複なし・五十音順)。入力候補に使う。 */
 	get categories(): string[] {
+		// ローカルの重複排除用。リアクティブ状態ではないので通常の Set でよい。
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const set = new Set<string>();
 		for (const b of this.bundles) {
 			if (b.item.category) set.add(b.item.category);

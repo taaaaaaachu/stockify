@@ -12,7 +12,7 @@ interface PushPayload {
 
 // サーバーからの Web Push を受けて通知を表示する。
 sw.addEventListener('push', (event: PushEvent) => {
-	let payload: PushPayload = {};
+	let payload: PushPayload;
 	try {
 		payload = event.data?.json() ?? {};
 	} catch {

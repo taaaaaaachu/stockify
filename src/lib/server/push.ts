@@ -5,7 +5,7 @@ import { env } from '$env/dynamic/private';
 import type { Db } from './db';
 import { pushSubscriptions, users, type PushSubscriptionRow } from './db/schema';
 import { listUserHouseholds } from './households';
-import { listBundles, getSettings } from './stock';
+import { listBundles } from './stock';
 import { buildDashboard, shoppingList } from '$lib/domain/dashboard';
 
 /** 通知間引きの既定クールダウン(この時間内は同じ端末へ再送しない)。 */
