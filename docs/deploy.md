@@ -37,9 +37,26 @@ push/PR ──▶ GitHub Actions (lint / check / test)
 ### 2. NAS 側の GHCR 認証(**パッケージが private の場合のみ**)
 
 GHCR パッケージは既定で private。Watchtower が pull できるよう認証情報を用意する。
+被害範囲を stockify 1 個に閉じるため **Fine-grained PAT** を使う(classic の `read:packages` は
+アカウント内の全 private パッケージが読めてしまう)。
 
-1. GitHub で PAT を発行: Settings → Developer settings → Personal access tokens (classic)、
-   スコープ **`read:packages`** のみ。
+1. GitHub で **Fine-grained PAT** を発行: Settings → Developer settings →
+   Personal access tokens → **Fine-grained tokens** → Generate new token。
+
+   | 項目 | 値 |
+   | --- | --- |
+   | Resource owner | `taaaaaaachu` |
+   | Expiration | **No expiration**(無人の NAS が期限切れで黙って止まるのを防ぐ) |
+   | Repository access | **Only select repositories** → `stockify` のみ |
+   | Permissions → **Contents** | **Read-only** |
+   | Permissions → Metadata | Read-only(必須のため自動付与) |
+
+   > リポジトリにリンク済みの GHCR パッケージは repo 権限を継承するため、pull には
+   > `Contents: Read` で足りる(ワークフローの `docker/metadata-action` が
+   > `org.opencontainers.image.source` ラベルを付けるので、パッケージは stockify に自動リンクされる)。
+   > もし独立パッケージのままで pull できない場合は、Packages ページ → 対象パッケージ →
+   > Package settings でリポジトリにリンクし直す。
+
 2. NAS に SSH で入り、docker にログイン(`~/.docker/config.json` が作られる):
 
    ```bash
@@ -50,7 +67,7 @@ GHCR パッケージは既定で private。Watchtower が pull できるよう�
    > root 以外で運用する場合はマウント元パスをそのユーザーの `~/.docker/config.json` に合わせる。
 
 **認証を省きたい場合**: GitHub の Packages ページで当該パッケージを **public** に変更すれば、
-上記ログインと compose の `config.json` マウント行は不要になる。
+PAT の発行・上記ログイン・compose の `config.json` マウント行はすべて不要になる。
 
 ### 3. NAS で本番を起動
 
