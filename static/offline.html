@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#2563eb" />
+		<title>オフライン | Stockify</title>
+		<style>
+			:root {
+				font-family: system-ui, sans-serif;
+				color: #0f172a;
+				background: #f8fafc;
+			}
+			body {
+				display: grid;
+				min-height: 100vh;
+				margin: 0;
+				place-items: center;
+			}
+			main {
+				max-width: 28rem;
+				padding: 2rem;
+				text-align: center;
+			}
+			h1 {
+				color: #2563eb;
+			}
+			button {
+				padding: 0.75rem 1rem;
+				border: 0;
+				border-radius: 0.5rem;
+				color: white;
+				background: #2563eb;
+				font: inherit;
+				cursor: pointer;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>Stockify</h1>
+			<p>オフラインです。通信状態を確認してから、もう一度お試しください。</p>
+			<button type="button" onclick="location.reload()">再読み込み</button>
+		</main>
+	</body>
+</html>

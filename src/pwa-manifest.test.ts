@@ -12,6 +12,10 @@ interface WebAppManifest {
 	icons: ManifestIcon[];
 }
 
+const serviceWorkerSource = readFileSync(new URL('./service-worker.ts', import.meta.url), 'utf8');
+const appTemplate = readFileSync(new URL('./app.html', import.meta.url), 'utf8');
+const offlinePage = readFileSync(new URL('../static/offline.html', import.meta.url), 'utf8');
+
 const manifest = JSON.parse(
 	readFileSync(new URL('../static/manifest.webmanifest', import.meta.url), 'utf8')
 ) as WebAppManifest;
@@ -27,5 +31,17 @@ describe('PWA manifest', () => {
 		expect(manifest.icons).toContainEqual(
 			expect.objectContaining({ type: 'image/png', sizes: '512x512', purpose: 'any' })
 		);
+	});
+
+	it('ナビゲーションへオフライン応答できるService Workerを提供する', () => {
+		expect(serviceWorkerSource).toContain("sw.addEventListener('fetch'");
+		expect(serviceWorkerSource).toContain("event.request.mode !== 'navigate'");
+		expect(serviceWorkerSource).toContain("const OFFLINE_URL = '/offline.html'");
+		expect(offlinePage).toContain('<title>オフライン | Stockify</title>');
+	});
+
+	it('HTMLにアプリ名とmanifest linkを含める', () => {
+		expect(appTemplate).toContain('<title>Stockify</title>');
+		expect(appTemplate).toContain('<link rel="manifest" href="/manifest.webmanifest" />');
 	});
 });
