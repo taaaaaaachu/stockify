@@ -38,6 +38,11 @@
 	const purchasesDesc = $derived(
 		bundle ? [...bundle.purchases].sort((a, b) => b.purchasedAt - a.purchasedAt) : []
 	);
+	// 使い切り・補正の履歴も新しい順に。リアクティブ状態を直接 sort すると
+	// 描画中に状態を書き換えることになり(state_unsafe_mutation)、詳細画面が
+	// 開けなくなるため、必ずコピーしてから並べ替える。
+	const ranOutsDesc = $derived(bundle ? [...bundle.ranOutEvents].sort((a, b) => b.at - a.at) : []);
+	const adjustmentsDesc = $derived(bundle ? [...bundle.adjustments].sort((a, b) => b.at - a.at) : []);
 	const activeSub = $derived(bundle?.subscriptions.find((s) => !s.paused) ?? bundle?.subscriptions[0]);
 
 	// type="number" の bind:value は数値化されるため、数値・文字列どちらも受ける。
@@ -324,13 +329,13 @@
 		{/if}
 		{#if bundle.ranOutEvents.length > 0 || bundle.adjustments.length > 0}
 			<div style="margin-top:0.6rem; font-size:0.85rem; color:var(--muted);">
-				{#each bundle.ranOutEvents.sort((a, b) => b.at - a.at) as e (e.id)}
+				{#each ranOutsDesc as e (e.id)}
 					<div style="display:flex; gap:0.5rem; align-items:center;">
 						<span>{formatDate(e.at)} 空になった</span>
 						<button onclick={() => store.removeRanOut(e.id)} style="border:none; background:none; color:var(--danger); cursor:pointer;" aria-label="削除">✕</button>
 					</div>
 				{/each}
-				{#each bundle.adjustments.sort((a, b) => b.at - a.at) as a (a.id)}
+				{#each adjustmentsDesc as a (a.id)}
 					<div style="display:flex; gap:0.5rem; align-items:center;">
 						<span>{formatDate(a.at)} 残量補正 → {formatQuantity(a.remaining, bundle.item.unit)}</span>
 						<button onclick={() => store.removeAdjustment(a.id)} style="border:none; background:none; color:var(--danger); cursor:pointer;" aria-label="削除">✕</button>
