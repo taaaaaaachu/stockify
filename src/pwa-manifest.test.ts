@@ -15,6 +15,8 @@ interface WebAppManifest {
 const serviceWorkerSource = readFileSync(new URL('./service-worker.ts', import.meta.url), 'utf8');
 const appTemplate = readFileSync(new URL('./app.html', import.meta.url), 'utf8');
 const offlinePage = readFileSync(new URL('../static/offline.html', import.meta.url), 'utf8');
+const rootLayout = readFileSync(new URL('./routes/+layout.svelte', import.meta.url), 'utf8');
+const viteConfig = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
 
 const manifest = JSON.parse(
 	readFileSync(new URL('../static/manifest.webmanifest', import.meta.url), 'utf8')
@@ -43,5 +45,13 @@ describe('PWA manifest', () => {
 	it('HTMLにアプリ名とmanifest linkを含める', () => {
 		expect(appTemplate).toContain('<title>Stockify</title>');
 		expect(appTemplate).toContain('<link rel="manifest" href="/manifest.webmanifest" />');
+	});
+
+	it('ビルドversion付きURLでService Workerを登録する', () => {
+		expect(viteConfig).toMatch(/serviceWorker:\s*{\s*[^}]*register:\s*false/s);
+		expect(rootLayout).toContain("import { version } from '$app/environment'");
+		expect(rootLayout).toContain(
+			'.register(`/service-worker.js?v=${encodeURIComponent(version)}`)'
+		);
 	});
 });

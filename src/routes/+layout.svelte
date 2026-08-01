@@ -1,11 +1,22 @@
 <script lang="ts">
 	import '../app.css';
+	import { onMount } from 'svelte';
+	import { version } from '$app/environment';
 	import { page } from '$app/state';
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { store } from '$lib/app/store.svelte';
 
 	let { data, children } = $props();
+
+	onMount(() => {
+		if (!('serviceWorker' in navigator)) return;
+
+		// ビルドごとにURLを変え、CDNに残った旧service-worker.jsを再利用させない。
+		navigator.serviceWorker
+			.register(`/service-worker.js?v=${encodeURIComponent(version)}`)
+			.catch((error: unknown) => console.error('Service Workerの登録に失敗しました', error));
+	});
 
 	// サーバーの認証・世帯コンテキストをストアへ反映(変化でリポジトリを選び直す)。
 	$effect(() => {
