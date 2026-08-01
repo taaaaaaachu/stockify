@@ -37,7 +37,7 @@ const baseInput = (over: Partial<EstimateInput> = {}): EstimateInput => ({
 	provisionalDaysToDeplete: null,
 	leadTimeDays: null,
 	defaultLeadTimeDays: 7,
-	hasActiveSubscription: false,
+	nextSubscriptionDeliveryAt: null,
 	purchases: [],
 	ranOutEvents: [],
 	adjustments: [],
@@ -233,15 +233,27 @@ describe('estimate: 枯渇予想日・購入推奨日', () => {
 		expect(e.recommendedPurchaseAt).toBeCloseTo(day(27), -1);
 	});
 
-	it('定期便が有効な品目は購入推奨日を出さない', () => {
+	it('次回配送が枯渇予想日までに届くなら購入推奨日を出さない', () => {
 		const input = baseInput({
 			purchases: [purchase(0, 300)],
-			provisionalDaysToDeplete: 30,
-			hasActiveSubscription: true
+			provisionalDaysToDeplete: 30, // 枯渇30日目
+			nextSubscriptionDeliveryAt: day(25) // 枯渇前に届く
 		});
 		const e = estimate(input, day(10));
 		expect(e.depletionAt).not.toBeNull();
 		expect(e.recommendedPurchaseAt).toBeNull();
+	});
+
+	it('次回配送が枯渇予想日より後なら購入推奨日を出す(スキップ等で補充が間に合わない)', () => {
+		const input = baseInput({
+			purchases: [purchase(0, 300)],
+			provisionalDaysToDeplete: 30, // 枯渇30日目
+			defaultLeadTimeDays: 7,
+			nextSubscriptionDeliveryAt: day(45) // 枯渇に間に合わない
+		});
+		const e = estimate(input, day(10));
+		// 定期便があっても間に合わないので通常どおり 23日目
+		expect(e.recommendedPurchaseAt).toBeCloseTo(day(23), -1);
 	});
 
 	it('レートが出せなければ枯渇・推奨日とも null', () => {

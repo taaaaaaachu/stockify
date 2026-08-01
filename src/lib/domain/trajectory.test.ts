@@ -19,7 +19,7 @@ const input = (over: Partial<EstimateInput> = {}): EstimateInput => ({
 	provisionalDaysToDeplete: null,
 	leadTimeDays: null,
 	defaultLeadTimeDays: 7,
-	hasActiveSubscription: false,
+	nextSubscriptionDeliveryAt: null,
 	purchases: [],
 	ranOutEvents: [],
 	adjustments: [],

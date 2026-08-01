@@ -7,6 +7,27 @@ import type { Subscription } from '$lib/types';
  */
 export const MAX_BACKFILL = 1000;
 
+/**
+ * スキップ後の次回予定日。現在の次回予定日を 1 間隔ぶん先送りした時刻を返す
+ * (その回の購入は生成しない)。未来は次回予定日 1 点だけなので、スキップは
+ * この 1 点を進める定型的な次回日変更にあたる。
+ */
+export function nextDeliveryAfterSkip(
+	subscription: Pick<Subscription, 'intervalDays' | 'nextDeliveryAt'>
+): number {
+	return subscription.nextDeliveryAt + subscription.intervalDays * MS_PER_DAY;
+}
+
+/**
+ * 次回日変更で受け付けてよい日付か。今日(now のローカル 0:00)以降なら true。
+ * 過去日は遡っての一括遅延生成を招くため受け付けない(過去分の登録は購入の手動追加が担う)。
+ */
+export function isAcceptableNextDelivery(at: number, now: number): boolean {
+	const todayStart = new Date(now);
+	todayStart.setHours(0, 0, 0, 0);
+	return at >= todayStart.getTime();
+}
+
 /** 遅延生成で作るべき 1 回分の配送。 */
 export interface DueDelivery {
 	/** 配送日時(= その回の予定日、epoch ミリ秒)。購入の purchasedAt になる。 */

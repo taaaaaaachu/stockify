@@ -18,8 +18,11 @@ export interface EstimateInput {
 	leadTimeDays: number | null;
 	/** 全体既定のリードタイム(日)。 */
 	defaultLeadTimeDays: number;
-	/** 有効な定期便があるか(あれば購入推奨の対象外)。 */
-	hasActiveSubscription: boolean;
+	/**
+	 * アクティブな定期便のうち最も早い次回配送日(epoch ミリ秒)。定期便が無ければ null。
+	 * この配送が枯渇予想日までに届くなら、自動補充される前提で購入推奨を出さない(ADR 0002 改訂)。
+	 */
+	nextSubscriptionDeliveryAt: number | null;
 	purchases: Purchase[];
 	ranOutEvents: RanOutEvent[];
 	adjustments: RemainingAdjustment[];
@@ -152,7 +155,8 @@ function pickAnchor(input: EstimateInput, purchasesAsc: Purchase[]): Anchor | nu
  *
  * 残量 = 基準残量 + (基準時刻より後の購入で入った量) − 消費レート × 経過日数。
  * 枯渇予想日 = 残量がゼロを切る時点(現在の残量とレートから外挿。将来の定期便配送は織り込まない)。
- * 購入推奨日 = 枯渇予想日 − リードタイム(品目固有 > 全体既定)。定期便が有効なら null。
+ * 購入推奨日 = 枯渇予想日 − リードタイム(品目固有 > 全体既定)。
+ *   ただし定期便の次回配送が枯渇予想日までに届くなら、自動補充される前提で null(ADR 0002 改訂)。
  */
 export function estimate(input: EstimateInput, now: number): Estimate {
 	const purchasesAsc = [...input.purchases].sort(byTimeAsc((p) => p.purchasedAt));
@@ -188,9 +192,15 @@ export function estimate(input: EstimateInput, now: number): Estimate {
 	}
 
 	let recommendedPurchaseAt: number | null = null;
-	if (depletionAt !== null && !input.hasActiveSubscription) {
-		const leadDays = input.leadTimeDays ?? input.defaultLeadTimeDays;
-		recommendedPurchaseAt = depletionAt - leadDays * MS_PER_DAY;
+	if (depletionAt !== null) {
+		// 定期便の次回配送が枯渇予想日までに届くなら、補充で足りるとみなし推奨を出さない。
+		const coveredBySubscription =
+			input.nextSubscriptionDeliveryAt !== null &&
+			input.nextSubscriptionDeliveryAt <= depletionAt;
+		if (!coveredBySubscription) {
+			const leadDays = input.leadTimeDays ?? input.defaultLeadTimeDays;
+			recommendedPurchaseAt = depletionAt - leadDays * MS_PER_DAY;
+		}
 	}
 
 	return { ratePerDay, remaining, remainingClamped, depletionAt, recommendedPurchaseAt };
@@ -201,7 +211,7 @@ export function estimateInputFromItem(
 	item: Pick<StockItem, 'leadTimeDays' | 'provisionalDaysToDeplete'>,
 	data: {
 		defaultLeadTimeDays: number;
-		hasActiveSubscription: boolean;
+		nextSubscriptionDeliveryAt: number | null;
 		purchases: Purchase[];
 		ranOutEvents: RanOutEvent[];
 		adjustments: RemainingAdjustment[];
@@ -211,7 +221,7 @@ export function estimateInputFromItem(
 		provisionalDaysToDeplete: item.provisionalDaysToDeplete,
 		leadTimeDays: item.leadTimeDays,
 		defaultLeadTimeDays: data.defaultLeadTimeDays,
-		hasActiveSubscription: data.hasActiveSubscription,
+		nextSubscriptionDeliveryAt: data.nextSubscriptionDeliveryAt,
 		purchases: data.purchases,
 		ranOutEvents: data.ranOutEvents,
 		adjustments: data.adjustments

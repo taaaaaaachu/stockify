@@ -32,6 +32,19 @@ function hasActiveSubscription(bundle: ItemBundle): boolean {
 	return bundle.subscriptions.some((s) => !s.paused);
 }
 
+/**
+ * アクティブ(一時停止でない)な定期便のうち、最も早い次回配送日。
+ * 補充が枯渇前に届くかの判定に使う(ADR 0002 改訂)。アクティブな定期便が無ければ null。
+ */
+function earliestActiveDeliveryAt(bundle: ItemBundle): number | null {
+	let earliest: number | null = null;
+	for (const s of bundle.subscriptions) {
+		if (s.paused) continue;
+		if (earliest === null || s.nextDeliveryAt < earliest) earliest = s.nextDeliveryAt;
+	}
+	return earliest;
+}
+
 function statusOf(estimate: Estimate, now: number): StockStatus {
 	// レートが出せず枯渇予測できない品目は unknown(残量だけ分かっても状態は判断しない)。
 	if (estimate.depletionAt === null) return 'unknown';
@@ -47,7 +60,7 @@ export function buildRow(bundle: ItemBundle, settings: AppSettings, now: number)
 	const active = hasActiveSubscription(bundle);
 	const input = estimateInputFromItem(bundle.item, {
 		defaultLeadTimeDays: settings.defaultLeadTimeDays,
-		hasActiveSubscription: active,
+		nextSubscriptionDeliveryAt: earliestActiveDeliveryAt(bundle),
 		purchases: bundle.purchases,
 		ranOutEvents: bundle.ranOutEvents,
 		adjustments: bundle.adjustments
@@ -100,11 +113,12 @@ export function buildDashboard(
 }
 
 /**
- * 買い物リスト: そろそろ買う/尽きた品目のうち、定期便で自動補充されないもの。
- * ダッシュボード行から派生する(緊急な順のまま)。
+ * 買い物リスト: そろそろ買う/尽きた品目を集める。ダッシュボード行から派生する(緊急な順のまま)。
+ *
+ * 定期便による除外はもう status に織り込まれている(ADR 0002 改訂): 次回配送が枯渇前に届く品目は
+ * 購入推奨日が出ず 'ok' になるため、ここでは status だけで判定すれば足りる。スキップ等で補充が
+ * 間に合わなくなった定期便品目は 'restock'/'depleted' となり、自動的にリストへ復帰する。
  */
 export function shoppingList(rows: DashboardRow[]): DashboardRow[] {
-	return rows.filter(
-		(r) => !r.hasActiveSubscription && (r.status === 'restock' || r.status === 'depleted')
-	);
+	return rows.filter((r) => r.status === 'restock' || r.status === 'depleted');
 }
