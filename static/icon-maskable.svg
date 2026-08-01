@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+	<!-- maskable用: 角丸なしの全面塗り。コンテンツは中央のセーフゾーン(約80%)内に収める -->
+	<rect width="512" height="512" fill="#2563eb" />
+	<g fill="#ffffff">
+		<!-- ボトル(詰替え)を模したアイコン。icon.svgと同一形状でセーフゾーン内に収まる -->
+		<rect x="196" y="128" width="120" height="44" rx="11" />
+		<path d="M178 192 h156 a30 30 0 0 1 30 30 v152 a38 38 0 0 1 -38 38 h-140 a38 38 0 0 1 -38 -38 v-152 a30 30 0 0 1 30 -30 z" />
+		<rect x="178" y="312" width="156" height="76" fill="#2563eb" opacity="0.35" />
+	</g>
+</svg>
