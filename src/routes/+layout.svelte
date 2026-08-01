@@ -19,6 +19,7 @@
 	const nav = [
 		{ href: '/', label: '在庫' },
 		{ href: '/shopping', label: '買い物リスト' },
+		{ href: '/subscriptions', label: '定期便' },
 		{ href: '/settings', label: '設定' }
 	] as const;
 
