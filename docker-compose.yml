@@ -3,9 +3,13 @@
 # notify-cron が毎日 /api/cron/notify を叩いて購入リマインドを送る。
 services:
   app:
-    build: .
-    image: stockify:latest
-    restart: "no"
+    # GitHub Actions がビルドして GHCR に push したイメージを使う(NAS ではビルドしない)。
+    # Watchtower がこのイメージの更新を監視し、新しい :latest を検知したら自動 pull → 再作成する。
+    image: ghcr.io/taaaaaaachu/stockify:latest
+    restart: unless-stopped
+    # Watchtower の監視対象に含めるラベル(WATCHTOWER_LABEL_ENABLE=true と対で機能する)。
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
     environment:
       # adapter-node がリバースプロキシ配下で form action / CSRF 検証に使う公開オリジン。
       # 自分のサブドメインに合わせて変更する。
@@ -30,7 +34,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    restart: "no"
+    restart: unless-stopped
     # Cloudflare Zero Trust ダッシュボードで発行した Tunnel トークンを .env に置く。
     # Public Hostname のサービスは http://app:3000 に向ける。
     command: tunnel --no-autoupdate run
@@ -44,7 +48,7 @@ services:
   # busybox crond を使う軽量コンテナ。CRON_SECRET を Bearer トークンに使う。
   notify-cron:
     image: alpine:3.20
-    restart: "no"
+    restart: unless-stopped
     depends_on:
       - app
     environment:
@@ -56,3 +60,21 @@ services:
         apk add --no-cache curl >/dev/null
         printf '*/15 * * * * curl -s -X POST -H "Authorization: Bearer %s" http://app:3000/api/cron/notify >/dev/null 2>&1\n' "$$CRON_SECRET" > /etc/crontabs/root
         exec crond -f -l 8
+
+  # イメージ自動更新(CD の後半)。GHCR を定期ポーリングし、app の :latest が更新されたら
+  # 自動で pull → コンテナ再作成する。app 起動時に docker-entrypoint.sh がマイグレーションを
+  # 適用するため、再作成だけで DB スキーマ更新も入る。
+  # ※ 監視対象は enable ラベルの付いた app のみ(cloudflared / notify-cron は対象外)。
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Tokyo
+      - WATCHTOWER_LABEL_ENABLE=true # enable ラベルの付いたコンテナだけ監視
+      - WATCHTOWER_CLEANUP=true # 入れ替え後に古いイメージを削除
+      - WATCHTOWER_POLL_INTERVAL=300 # 5分ごとに GHCR をチェック
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # GHCR が private の場合のみ必要: NAS で `docker login ghcr.io` 済みの認証情報を渡す。
+      # public 化する場合はこの行を削除してよい。
+      - /root/.docker/config.json:/config.json:ro
