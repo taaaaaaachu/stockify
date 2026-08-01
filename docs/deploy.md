@@ -8,23 +8,31 @@ push/PR ──▶ GitHub Actions (lint / check / test)
                                    │
                           (NAS から外向きに pull)
                                    ▼
-              Synology NAS: Watchtower が 5 分毎に GHCR を監視
-                          └─ 新しい :latest を検知 ─▶ 自動 pull ─▶ app を再作成
+              Synology NAS: Watchtower(独立プロジェクト・NAS全体で1台)が 5 分毎に GHCR を監視
+                          └─ enable ラベル付き app の新しい :latest を検知 ─▶ 自動 pull ─▶ 再作成
                                    └─ 起動時に scripts/migrate.js で DB マイグレーション
 ```
 
 - NAS は宅内にあり外部から到達できないので、GitHub からは **push しない**。NAS が **pull で取りに行く**。
 - ポート開放・VPN は不要(必要な外向き通信は GHCR への HTTPS のみ)。
 - ビルドはランタイム env 非依存(`ORIGIN` 等は実行時に compose の `environment:` で注入)。
+- **Watchtower は stockify の compose には含めない**。`/var/run/docker.sock` 経由で Docker ホスト
+  全体を監視できるため、NAS 全体で **1 台だけ独立プロジェクト**として動かし、enable ラベルの付いた
+  全プロジェクトの app(stockify / lowest_finder 等)をまとめて自動更新する。stockify を作り直しても
+  自動更新が止まらないようにする分離。→ 後述「Watchtower(独立プロジェクト)」。
 
 ## 構成ファイル
 
 | ファイル | 役割 |
 | --- | --- |
 | `.github/workflows/ci.yml` | CI(lint/check/test)+ main のイメージを GHCR に配布 |
-| `docker-compose.yml` | NAS 本番。`app` は GHCR イメージを pull、`watchtower` が自動更新 |
+| `docker-compose.yml` | NAS 本番。`app`(GHCR pull)+ `cloudflared` + `notify-cron`。Watchtower は含まない |
 | `docker-compose.local.yml` | ローカル動作確認用(こちらは従来どおり `build:`) |
 | `Dockerfile` / `docker-entrypoint.sh` | イメージ定義と起動時マイグレーション |
+
+Watchtower は本リポジトリ外の**独立した Container Manager プロジェクト**(NAS 上
+`/volume1/docker/watchtower`)として1台だけ動かす。compose 定義は後述の
+「Watchtower(独立プロジェクト)」を正典とする。
 
 ## 初回セットアップ(一度だけ)
 
@@ -81,6 +89,39 @@ PAT の発行・上記ログイン・compose の `config.json` マウント行�
    ```
 
 以後 NAS でのビルドは不要。`main` に変更が入るたび、5 分以内に Watchtower が自動反映する。
+
+### 4. Watchtower(独立プロジェクト・NAS 全体で 1 台だけ)
+
+イメージ自動更新の Watchtower は、各アプリの compose には入れず**単独のプロジェクト**として
+1 台だけ動かす(`/var/run/docker.sock` 経由で Docker ホスト全体を監視できるため)。これにより
+stockify を作り直しても自動更新が止まらず、lowest_finder など他プロジェクトも同じ 1 台が面倒を見る。
+
+NAS に `/volume1/docker/watchtower/docker-compose.yml` を作り、Container Manager で新規プロジェクト化する:
+
+```yaml
+# NAS 全体のイメージ自動更新。enable ラベルの付いたコンテナだけを監視し、
+# GHCR の :latest 更新を検知したら自動 pull → 再作成する。各アプリの compose には入れない。
+services:
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Tokyo
+      - WATCHTOWER_LABEL_ENABLE=true    # enable ラベル付きコンテナだけ監視
+      - WATCHTOWER_CLEANUP=true         # 入れ替え後に古いイメージを削除
+      - WATCHTOWER_POLL_INTERVAL=300    # 5分ごとに GHCR をチェック
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # private GHCR pull 用の認証(NAS で `docker login ghcr.io` 済みの config.json)。
+      # 対象パッケージをすべて public 化する場合はこの行を削除してよい。
+      - /root/.docker/config.json:/config.json:ro
+```
+
+- 監視対象にしたいアプリは、その compose の当該サービスに
+  `labels: [com.centurylinklabs.watchtower.enable=true]` を付ける(stockify の `app` は付与済み)。
+- Watchtower は**このプロジェクト自身も含む**すべてのラベル付きコンテナを見るが、enable ラベルを
+  付けなければ対象外。cloudflared / notify-cron は対象外のまま。
+- **単一障害点**である点に注意: この Watchtower を止めると全プロジェクトの自動更新が止まる。
 
 ## 日常運用
 

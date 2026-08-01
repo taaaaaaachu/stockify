@@ -61,20 +61,7 @@ services:
         printf '*/15 * * * * curl -s -X POST -H "Authorization: Bearer %s" http://app:3000/api/cron/notify >/dev/null 2>&1\n' "$$CRON_SECRET" > /etc/crontabs/root
         exec crond -f -l 8
 
-  # イメージ自動更新(CD の後半)。GHCR を定期ポーリングし、app の :latest が更新されたら
-  # 自動で pull → コンテナ再作成する。app 起動時に docker-entrypoint.sh がマイグレーションを
-  # 適用するため、再作成だけで DB スキーマ更新も入る。
-  # ※ 監視対象は enable ラベルの付いた app のみ(cloudflared / notify-cron は対象外)。
-  watchtower:
-    image: containrrr/watchtower:latest
-    restart: unless-stopped
-    environment:
-      - TZ=Asia/Tokyo
-      - WATCHTOWER_LABEL_ENABLE=true # enable ラベルの付いたコンテナだけ監視
-      - WATCHTOWER_CLEANUP=true # 入れ替え後に古いイメージを削除
-      - WATCHTOWER_POLL_INTERVAL=300 # 5分ごとに GHCR をチェック
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      # GHCR が private の場合のみ必要: NAS で `docker login ghcr.io` 済みの認証情報を渡す。
-      # public 化する場合はこの行を削除してよい。
-      - /root/.docker/config.json:/config.json:ro
+# ※ イメージ自動更新の Watchtower は、この stockify プロジェクトには含めない。
+#    NAS 全体で 1 台だけ独立プロジェクト(/volume1/docker/watchtower)として動かし、
+#    Docker ホスト全体の enable ラベル付きコンテナ(この app 含む)を監視する。
+#    stockify を作り直しても自動更新が止まらないようにするための分離。詳細は docs/deploy.md。
