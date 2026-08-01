@@ -137,6 +137,45 @@ describe('consumptionRatePerDay', () => {
 		expect(rate!).toBeLessThan(20); // ただし急には飛びつかない
 		expect(rate!).toBeCloseTo(15.0, 1);
 	});
+
+	// 統合プール(使い切り区間 + 最後の使い切い以降の tail 購入区間)。
+	// 使い切りで 10ml/日 を確立した想定: 使い切り 0/30/60/90 日、各窓に 300ml 購入。
+	const establishedRanOuts = () => [0, 30, 60, 90].map((d) => ranOut(d));
+	const inWindowPurchases = () => [30, 60, 90].map((d) => purchase(d, 300)); // 各使い切り区間に 300ml
+
+	it('使い切りをマメに記録(tail 無し)なら使い切りレートのまま(回帰なし)', () => {
+		const rate = consumptionRatePerDay(
+			baseInput({ ranOutEvents: establishedRanOuts(), purchases: inWindowPurchases() })
+		);
+		expect(rate).toBeCloseTo(10, 6);
+	});
+
+	it('使い切りが古くなり最近の購入が別ペースなら購入側へ寄る(統合プール)', () => {
+		// tail: 最後の使い切り(90日)以降、15日ごと(=20ml/日ペース)に購入。
+		const tail = [105, 120, 135].map((d) => purchase(d, 300));
+		const rate = consumptionRatePerDay(
+			baseInput({
+				ranOutEvents: establishedRanOuts(),
+				purchases: [...inWindowPurchases(), ...tail]
+			})
+		);
+		expect(rate).not.toBeNull();
+		expect(rate!).toBeGreaterThan(10.5); // 使い切りだけの 10 から購入(20)側へ動く
+		expect(rate!).toBeLessThan(20); // ただし使い切りの重みが残り急には寄らない
+		expect(rate!).toBeCloseTo(12.27, 1);
+	});
+
+	it('tail が使い切りと同ペースならドリフトしない', () => {
+		// tail も 30日ごと(=10ml/日)なら統合しても 10 のまま。
+		const tail = [120, 150, 180].map((d) => purchase(d, 300));
+		const rate = consumptionRatePerDay(
+			baseInput({
+				ranOutEvents: establishedRanOuts(),
+				purchases: [...inWindowPurchases(), ...tail]
+			})
+		);
+		expect(rate).toBeCloseTo(10, 6);
+	});
 });
 
 describe('weightedRatePerDay: recency 加重', () => {
@@ -174,6 +213,19 @@ describe('weightedRatePerDay: recency 加重', () => {
 
 	it('加重消費量が 0(全区間 volume 0)なら null', () => {
 		expect(weightedRatePerDay([{ days: 30, volume: 0 }], 3)).toBeNull();
+	});
+
+	it('信頼度(quality)が低い区間ほど結果への寄与が小さい', () => {
+		// 古い区間=10ml/日、新しい区間=20ml/日。新しい方の quality を下げると結果は 10 側へ寄る。
+		const base: RateInterval[] = [
+			{ days: 30, volume: 300, quality: 1 },
+			{ days: 15, volume: 300, quality: 1 }
+		];
+		const lowered: RateInterval[] = [
+			{ days: 30, volume: 300, quality: 1 },
+			{ days: 15, volume: 300, quality: 0.5 }
+		];
+		expect(weightedRatePerDay(lowered, 3)!).toBeLessThan(weightedRatePerDay(base, 3)!);
 	});
 });
 

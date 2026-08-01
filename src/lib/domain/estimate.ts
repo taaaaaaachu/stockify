@@ -61,16 +61,25 @@ function sumVolume(purchases: Purchase[], predicate: (p: Purchase) => boolean): 
  */
 export const RATE_HALFLIFE_CYCLES = 3;
 
-/** 1 区間(前の基準から次の基準まで)の観測: その間に消費した量と経過日数。 */
+/**
+ * 購入区間の品質重み(使い切り区間 = 1 に対する相対値)。
+ * 使い切り(空→空)は消費の確定サンプルなので重み 1、購入間隔は「買った分が次までに使い切られた」
+ * という定常近似にすぎないため 0.5(=半分の信頼度)。統合プールで両者を混ぜるときに効く(ADR 0001 改訂)。
+ */
+export const PURCHASE_QUALITY = 0.5;
+
+/** 1 区間(前の基準から次の基準まで)の観測: その間に消費した量・経過日数・信頼度。 */
 export interface RateInterval {
 	days: number;
 	volume: number;
+	/** 信頼度(省略時 1)。使い切り区間 = 1、購入区間 = PURCHASE_QUALITY。 */
+	quality?: number;
 }
 
 /**
- * 区間列(古い順)から、直近ほど重い指数減衰で加重した消費レート(volume/日)を求める。
- *   rate = Σ wᵢ·volumeᵢ / Σ wᵢ·daysᵢ,  wᵢ = 0.5^(何区間前か / halfLifeCycles)
- * 最新区間を age 0 とする。halfLifeCycles = Infinity なら全区間等重み(素朴な長期平均)に一致。
+ * 区間列(古い順)から、直近ほど重い指数減衰 × 区間の信頼度で加重した消費レート(volume/日)を求める。
+ *   rate = Σ qᵢ·wᵢ·volumeᵢ / Σ qᵢ·wᵢ·daysᵢ,  wᵢ = 0.5^(何区間前か / halfLifeCycles), qᵢ = quality
+ * 最新区間を age 0 とする。halfLifeCycles = Infinity かつ quality 一律なら素朴な長期平均に一致。
  * 加重期間・加重消費量がともに正のときだけ値を返し、そうでなければ null。
  */
 export function weightedRatePerDay(intervals: RateInterval[], halfLifeCycles: number): number | null {
@@ -79,7 +88,8 @@ export function weightedRatePerDay(intervals: RateInterval[], halfLifeCycles: nu
 	let weightedDays = 0;
 	for (let i = 0; i <= newest; i++) {
 		const age = newest - i;
-		const w = halfLifeCycles === Infinity ? 1 : Math.pow(0.5, age / halfLifeCycles);
+		const decay = halfLifeCycles === Infinity ? 1 : Math.pow(0.5, age / halfLifeCycles);
+		const w = decay * (intervals[i].quality ?? 1);
 		weightedVolume += w * intervals[i].volume;
 		weightedDays += w * intervals[i].days;
 	}
@@ -97,54 +107,71 @@ function coalescePurchasesByTime(purchasesAsc: Purchase[]): { at: number; volume
 }
 
 /**
+ * 時刻順の購入イベント列から購入区間の観測を作る。
+ * 区間 i の消費 ≈ その区間の始点で買った量(最新購入分は未消費なので区間の元にしない)。
+ */
+function purchaseIntervals(
+	events: { at: number; volume: number }[],
+	quality: number
+): RateInterval[] {
+	const intervals: RateInterval[] = [];
+	for (let i = 0; i < events.length - 1; i++) {
+		intervals.push({ days: (events[i + 1].at - events[i].at) / MS_PER_DAY, volume: events[i].volume, quality });
+	}
+	return intervals;
+}
+
+/**
  * 消費レート(volume/day)を推定する。
  *
  * 優先順位(ADR 0001):
- *  1. 使い切りイベントが 2 件以上 → 空〜空の各区間を「消費量 ÷ 期間」の観測とみなす。
- *     残量が確実に 0 になった 2 点で挟むため、最も正確な消費サンプル。
- *  2. 購入が 2 件以上 → 各購入間隔を観測とみなす(その間隔で買った分を消費と近似)。
- *     直近購入分はまだ消費されていないため区間の元にしない。
+ *  1. 使い切りイベントが 2 件以上 → 空〜空の各区間(信頼度 1)に、
+ *     「最後の使い切り以降の購入区間」(信頼度 PURCHASE_QUALITY)を足した統合プールを加重平均。
+ *     使い切りが確定サンプルとして支配しつつ、使い切りが古くなると最近の購入ペースが効いてくる。
+ *  2. 使い切りが 1 件以下 → 購入間隔だけで加重平均。
  *  3. 仮の値 → 初回内容量 ÷ 想定日数。
  *
- * 1・2 はいずれも複数の区間観測を、直近ほど重い指数減衰で加重平均する
- * (halfLifeCycles = ∞ なら素朴な長期平均に一致)。これにより、購入を重ねるほど
+ * 1・2 とも複数の区間観測を、直近ほど重い指数減衰 × 区間の信頼度で加重平均する
+ * (halfLifeCycles = ∞ かつ信頼度一律なら素朴な長期平均に一致)。これにより、購入を重ねるほど
  * 精度が上がりつつ、生活の変化には数サイクルで追従し、大昔のパターンは自然に薄れる。
  * どの手段も使えなければ null。
  */
 export function consumptionRatePerDay(input: EstimateInput): number | null {
 	const purchases = [...input.purchases].sort(byTimeAsc((p) => p.purchasedAt));
 	const ranOuts = [...input.ranOutEvents].sort(byTimeAsc((e) => e.at));
+	const events = coalescePurchasesByTime(purchases);
 
-	// 1. 使い切りイベント基準(最優先): 連続する使い切りペアを1区間に分解して加重平均。
+	// 1. 使い切り区間 + 最後の使い切り以降の購入区間(tail)を1プールに統合して加重平均。
 	const ranOutTimes = [...new Set(ranOuts.map((e) => e.at))].sort((a, b) => a - b);
 	if (ranOutTimes.length >= 2) {
 		const span = (ranOutTimes[ranOutTimes.length - 1] - ranOutTimes[0]) / MS_PER_DAY;
 		if (span >= MIN_SPAN_DAYS) {
-			const intervals: RateInterval[] = [];
+			// 使い切り区間(空→空、信頼度 1)。
+			const pool: RateInterval[] = [];
 			for (let i = 1; i < ranOutTimes.length; i++) {
 				const lo = ranOutTimes[i - 1];
 				const hi = ranOutTimes[i];
 				const volume = sumVolume(purchases, (p) => p.purchasedAt > lo && p.purchasedAt <= hi);
-				intervals.push({ days: (hi - lo) / MS_PER_DAY, volume });
+				pool.push({ days: (hi - lo) / MS_PER_DAY, volume, quality: 1 });
 			}
-			const rate = weightedRatePerDay(intervals, RATE_HALFLIFE_CYCLES);
+			// tail: 最後の使い切りより後の購入区間(信頼度 PURCHASE_QUALITY)を時系列で後ろに足す。
+			// 使い切りをマメに記録している間は tail が生じず、従来どおり使い切り区間だけになる。
+			const lastRanOut = ranOutTimes[ranOutTimes.length - 1];
+			const tail = events.filter((e) => e.at > lastRanOut);
+			pool.push(...purchaseIntervals(tail, PURCHASE_QUALITY));
+
+			const rate = weightedRatePerDay(pool, RATE_HALFLIFE_CYCLES);
 			if (rate !== null) return rate;
 		}
 	}
 
 	// 2. 購入間隔の(recency 加重)長期平均。
-	const events = coalescePurchasesByTime(purchases);
 	if (events.length >= 2) {
 		const span = (events[events.length - 1].at - events[0].at) / MS_PER_DAY;
 		// 期間が短すぎる(=作成直後にまとめて買い足した等)と極小の時間で割って
 		// レートが爆発するため、最低期間を満たすまでは採用せず仮の値へ落とす。
 		if (span >= MIN_SPAN_DAYS) {
-			const intervals: RateInterval[] = [];
-			for (let i = 0; i < events.length - 1; i++) {
-				// 区間 i の消費 ≈ その区間の始点で買った量。最新購入分は未消費なので区間の元にしない。
-				intervals.push({ days: (events[i + 1].at - events[i].at) / MS_PER_DAY, volume: events[i].volume });
-			}
-			const rate = weightedRatePerDay(intervals, RATE_HALFLIFE_CYCLES);
+			const rate = weightedRatePerDay(purchaseIntervals(events, 1), RATE_HALFLIFE_CYCLES);
 			if (rate !== null) return rate;
 		}
 	}
