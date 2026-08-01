@@ -39,6 +39,9 @@
 		)
 	);
 
+	// 次回日入力の下限(今日)。過去日は store 側で無視されるため、UI でも選ばせない。
+	const todayInput = $derived(localDateInput(new Date(store.now)));
+
 	let busy = $state<string | null>(null);
 	let editingNextId = $state<string | null>(null);
 	let nextDate = $state('');
@@ -87,6 +90,112 @@
 		}
 	}
 </script>
+
+{#snippet subscriptionCard(row: SubscriptionRow)}
+	{@const sub = row.subscription}
+	<div
+		style="background:var(--card); border:1px solid var(--border); border-radius:0.75rem; padding:0.9rem;{sub.paused
+			? ' opacity:0.9;'
+			: ''}"
+	>
+		<div
+			style="display:flex; gap:0.75rem; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;"
+		>
+			<div>
+				<div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+					<a
+						href={resolve('/items/[id]', { id: row.item.id })}
+						style="font-weight:700; color:inherit; text-decoration:none;">{row.item.name}</a
+					>
+					{#if row.item.category}
+						<span style="font-size:0.75rem; color:var(--muted);">{row.item.category}</span>
+					{/if}
+					{#if sub.paused}
+						<span
+							style="font-size:0.72rem; color:var(--muted); border:1px solid var(--border);
+							       border-radius:999px; padding:0 0.4rem;">一時停止中</span
+						>
+					{:else}
+						<span
+							style="font-size:0.72rem; color:var(--accent); border:1px solid var(--accent);
+							       border-radius:999px; padding:0 0.4rem;">稼働中</span
+						>
+					{/if}
+				</div>
+				<div style="margin-top:0.35rem; font-size:0.9rem; color:var(--muted);">
+					{sub.intervalDays}日ごとに {formatQuantity(
+						sub.volumePerDelivery * sub.quantityPerDelivery,
+						row.item.unit
+					)} ・ 次回 {formatDate(sub.nextDeliveryAt)}{#if !sub.paused}
+						({formatDaysUntil((sub.nextDeliveryAt - store.now) / MS_PER_DAY)}){/if}
+				</div>
+			</div>
+			<div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+				{#if sub.paused}
+					<button
+						onclick={() => togglePaused(row)}
+						disabled={busy === sub.id}
+						style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+					>
+						再開
+					</button>
+				{:else}
+					<button
+						onclick={() => skip(row)}
+						disabled={busy === sub.id}
+						style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+					>
+						スキップ
+					</button>
+				{/if}
+				<button
+					onclick={() => startEditNext(row)}
+					style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+				>
+					次回日変更
+				</button>
+				{#if !sub.paused}
+					<button
+						onclick={() => togglePaused(row)}
+						disabled={busy === sub.id}
+						style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+					>
+						一時停止
+					</button>
+				{/if}
+				<button
+					onclick={() => remove(row)}
+					disabled={busy === sub.id}
+					style="border:1px solid var(--danger); color:var(--danger); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+				>
+					解約
+				</button>
+			</div>
+		</div>
+
+		{#if editingNextId === sub.id}
+			<form
+				onsubmit={(e) => saveNextDate(row, e)}
+				style="display:flex; gap:0.5rem; align-items:center; margin-top:0.8rem; flex-wrap:wrap;"
+			>
+				<input bind:value={nextDate} type="date" min={todayInput} required />
+				<button
+					type="submit"
+					style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+				>
+					保存
+				</button>
+				<button
+					type="button"
+					onclick={() => (editingNextId = null)}
+					style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+				>
+					やめる
+				</button>
+			</form>
+		{/if}
+	</div>
+{/snippet}
 
 <div
 	style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;"
@@ -142,92 +251,7 @@
 		{:else}
 			<div style="display:flex; flex-direction:column; gap:0.7rem;">
 				{#each activeRows as row (row.subscription.id)}
-					<div
-						style="background:var(--card); border:1px solid var(--border); border-radius:0.75rem; padding:0.9rem;"
-					>
-						<div
-							style="display:flex; gap:0.75rem; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;"
-						>
-							<div>
-								<div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-									<a
-										href={resolve('/items/[id]', { id: row.item.id })}
-										style="font-weight:700; color:inherit; text-decoration:none;"
-										>{row.item.name}</a
-									>
-									{#if row.item.category}
-										<span style="font-size:0.75rem; color:var(--muted);">{row.item.category}</span>
-									{/if}
-									<span
-										style="font-size:0.72rem; color:var(--accent); border:1px solid var(--accent);
-										       border-radius:999px; padding:0 0.4rem;"
-										>稼働中</span
-									>
-								</div>
-								<div style="margin-top:0.35rem; font-size:0.9rem; color:var(--muted);">
-									{row.subscription.intervalDays}日ごとに {formatQuantity(
-										row.subscription.volumePerDelivery * row.subscription.quantityPerDelivery,
-										row.item.unit
-									)} ・ 次回 {formatDate(row.subscription.nextDeliveryAt)} ({formatDaysUntil(
-										(row.subscription.nextDeliveryAt - store.now) / MS_PER_DAY
-									)})
-								</div>
-							</div>
-							<div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-								{#if !row.subscription.paused}
-									<button
-										onclick={() => skip(row)}
-										disabled={busy === row.subscription.id}
-										style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-									>
-										スキップ
-									</button>
-								{/if}
-								<button
-									onclick={() => startEditNext(row)}
-									style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									次回日変更
-								</button>
-								<button
-									onclick={() => togglePaused(row)}
-									disabled={busy === row.subscription.id}
-									style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									一時停止
-								</button>
-								<button
-									onclick={() => remove(row)}
-									disabled={busy === row.subscription.id}
-									style="border:1px solid var(--danger); color:var(--danger); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									解約
-								</button>
-							</div>
-						</div>
-
-						{#if editingNextId === row.subscription.id}
-							<form
-								onsubmit={(e) => saveNextDate(row, e)}
-								style="display:flex; gap:0.5rem; align-items:center; margin-top:0.8rem; flex-wrap:wrap;"
-							>
-								<input bind:value={nextDate} type="date" required />
-								<button
-									type="submit"
-									style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									保存
-								</button>
-								<button
-									type="button"
-									onclick={() => (editingNextId = null)}
-									style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									やめる
-								</button>
-							</form>
-						{/if}
-					</div>
+					{@render subscriptionCard(row)}
 				{/each}
 			</div>
 		{/if}
@@ -240,81 +264,7 @@
 		{:else}
 			<div style="display:flex; flex-direction:column; gap:0.7rem;">
 				{#each pausedRows as row (row.subscription.id)}
-					<div
-						style="background:var(--card); border:1px solid var(--border); border-radius:0.75rem; padding:0.9rem; opacity:0.9;"
-					>
-						<div
-							style="display:flex; gap:0.75rem; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;"
-						>
-							<div>
-								<div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-									<a
-										href={resolve('/items/[id]', { id: row.item.id })}
-										style="font-weight:700; color:inherit; text-decoration:none;"
-										>{row.item.name}</a
-									>
-									{#if row.item.category}
-										<span style="font-size:0.75rem; color:var(--muted);">{row.item.category}</span>
-									{/if}
-									<span
-										style="font-size:0.72rem; color:var(--muted); border:1px solid var(--border);
-										       border-radius:999px; padding:0 0.4rem;"
-										>一時停止中</span
-									>
-								</div>
-								<div style="margin-top:0.35rem; font-size:0.9rem; color:var(--muted);">
-									{row.subscription.intervalDays}日ごとに {formatQuantity(
-										row.subscription.volumePerDelivery * row.subscription.quantityPerDelivery,
-										row.item.unit
-									)} ・ 次回 {formatDate(row.subscription.nextDeliveryAt)}
-								</div>
-							</div>
-							<div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-								<button
-									onclick={() => togglePaused(row)}
-									disabled={busy === row.subscription.id}
-									style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									再開
-								</button>
-								<button
-									onclick={() => startEditNext(row)}
-									style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									次回日変更
-								</button>
-								<button
-									onclick={() => remove(row)}
-									disabled={busy === row.subscription.id}
-									style="border:1px solid var(--danger); color:var(--danger); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									解約
-								</button>
-							</div>
-						</div>
-
-						{#if editingNextId === row.subscription.id}
-							<form
-								onsubmit={(e) => saveNextDate(row, e)}
-								style="display:flex; gap:0.5rem; align-items:center; margin-top:0.8rem; flex-wrap:wrap;"
-							>
-								<input bind:value={nextDate} type="date" required />
-								<button
-									type="submit"
-									style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									保存
-								</button>
-								<button
-									type="button"
-									onclick={() => (editingNextId = null)}
-									style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
-								>
-									やめる
-								</button>
-							</form>
-						{/if}
-					</div>
+					{@render subscriptionCard(row)}
 				{/each}
 			</div>
 		{/if}
