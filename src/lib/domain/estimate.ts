@@ -55,46 +55,97 @@ function sumVolume(purchases: Purchase[], predicate: (p: Purchase) => boolean): 
 }
 
 /**
+ * 消費レート推定の recency 減衰の半減期(サイクル数)。
+ * 「H サイクル前の観測は重みが半分」。∞ にすると等重み(=素朴な長期平均)に一致する。
+ * 3 は、生活の変化への追従とノイズ耐性のバランスが最も良い点(ADR 0001 のプロトタイプで確認)。
+ */
+export const RATE_HALFLIFE_CYCLES = 3;
+
+/** 1 区間(前の基準から次の基準まで)の観測: その間に消費した量と経過日数。 */
+export interface RateInterval {
+	days: number;
+	volume: number;
+}
+
+/**
+ * 区間列(古い順)から、直近ほど重い指数減衰で加重した消費レート(volume/日)を求める。
+ *   rate = Σ wᵢ·volumeᵢ / Σ wᵢ·daysᵢ,  wᵢ = 0.5^(何区間前か / halfLifeCycles)
+ * 最新区間を age 0 とする。halfLifeCycles = Infinity なら全区間等重み(素朴な長期平均)に一致。
+ * 加重期間・加重消費量がともに正のときだけ値を返し、そうでなければ null。
+ */
+export function weightedRatePerDay(intervals: RateInterval[], halfLifeCycles: number): number | null {
+	const newest = intervals.length - 1;
+	let weightedVolume = 0;
+	let weightedDays = 0;
+	for (let i = 0; i <= newest; i++) {
+		const age = newest - i;
+		const w = halfLifeCycles === Infinity ? 1 : Math.pow(0.5, age / halfLifeCycles);
+		weightedVolume += w * intervals[i].volume;
+		weightedDays += w * intervals[i].days;
+	}
+	if (weightedDays <= 0 || weightedVolume <= 0) return null;
+	return weightedVolume / weightedDays;
+}
+
+/** 同一時刻の購入をまとめる(購入間隔の分解でゼロ幅区間を作らないため)。 */
+function coalescePurchasesByTime(purchasesAsc: Purchase[]): { at: number; volume: number }[] {
+	const byTime = new Map<number, number>();
+	for (const p of purchasesAsc) {
+		byTime.set(p.purchasedAt, (byTime.get(p.purchasedAt) ?? 0) + p.volume);
+	}
+	return [...byTime.entries()].sort((a, b) => a[0] - b[0]).map(([at, volume]) => ({ at, volume }));
+}
+
+/**
  * 消費レート(volume/day)を推定する。
  *
  * 優先順位(ADR 0001):
- *  1. 使い切りイベントが 2 件以上 → 空〜空の間に購入した総量 ÷ その期間。
+ *  1. 使い切りイベントが 2 件以上 → 空〜空の各区間を「消費量 ÷ 期間」の観測とみなす。
  *     残量が確実に 0 になった 2 点で挟むため、最も正確な消費サンプル。
- *  2. 購入が 2 件以上 → 長期平均方式: (累計購入量 − 直近購入量) ÷ (初回〜直近の期間)。
- *     直近購入分はまだ消費されていないため除く。早買い/まとめ買いのブレは
- *     期間全体で平均化され、購入を重ねるほど正確になる。
+ *  2. 購入が 2 件以上 → 各購入間隔を観測とみなす(その間隔で買った分を消費と近似)。
+ *     直近購入分はまだ消費されていないため区間の元にしない。
  *  3. 仮の値 → 初回内容量 ÷ 想定日数。
  *
- * いずれも消費量が正で期間が正のときだけ採用し、満たさなければ次の手段へ落ちる。
- * どれも使えなければ null。
+ * 1・2 はいずれも複数の区間観測を、直近ほど重い指数減衰で加重平均する
+ * (halfLifeCycles = ∞ なら素朴な長期平均に一致)。これにより、購入を重ねるほど
+ * 精度が上がりつつ、生活の変化には数サイクルで追従し、大昔のパターンは自然に薄れる。
+ * どの手段も使えなければ null。
  */
 export function consumptionRatePerDay(input: EstimateInput): number | null {
 	const purchases = [...input.purchases].sort(byTimeAsc((p) => p.purchasedAt));
 	const ranOuts = [...input.ranOutEvents].sort(byTimeAsc((e) => e.at));
 
-	// 1. 使い切りイベント基準(最優先)
-	if (ranOuts.length >= 2) {
-		const first = ranOuts[0].at;
-		const last = ranOuts[ranOuts.length - 1].at;
-		const days = (last - first) / MS_PER_DAY;
-		if (days >= MIN_SPAN_DAYS) {
-			const consumed = sumVolume(purchases, (p) => p.purchasedAt > first && p.purchasedAt <= last);
-			if (consumed > 0) return consumed / days;
+	// 1. 使い切りイベント基準(最優先): 連続する使い切りペアを1区間に分解して加重平均。
+	const ranOutTimes = [...new Set(ranOuts.map((e) => e.at))].sort((a, b) => a - b);
+	if (ranOutTimes.length >= 2) {
+		const span = (ranOutTimes[ranOutTimes.length - 1] - ranOutTimes[0]) / MS_PER_DAY;
+		if (span >= MIN_SPAN_DAYS) {
+			const intervals: RateInterval[] = [];
+			for (let i = 1; i < ranOutTimes.length; i++) {
+				const lo = ranOutTimes[i - 1];
+				const hi = ranOutTimes[i];
+				const volume = sumVolume(purchases, (p) => p.purchasedAt > lo && p.purchasedAt <= hi);
+				intervals.push({ days: (hi - lo) / MS_PER_DAY, volume });
+			}
+			const rate = weightedRatePerDay(intervals, RATE_HALFLIFE_CYCLES);
+			if (rate !== null) return rate;
 		}
 	}
 
-	// 2. 購入間隔の長期平均
-	if (purchases.length >= 2) {
-		const first = purchases[0].purchasedAt;
-		const last = purchases[purchases.length - 1].purchasedAt;
-		const days = (last - first) / MS_PER_DAY;
+	// 2. 購入間隔の(recency 加重)長期平均。
+	const events = coalescePurchasesByTime(purchases);
+	if (events.length >= 2) {
+		const span = (events[events.length - 1].at - events[0].at) / MS_PER_DAY;
 		// 期間が短すぎる(=作成直後にまとめて買い足した等)と極小の時間で割って
 		// レートが爆発するため、最低期間を満たすまでは採用せず仮の値へ落とす。
-		if (days >= MIN_SPAN_DAYS) {
-			const total = sumVolume(purchases, () => true);
-			const lastVolume = purchases[purchases.length - 1].volume;
-			const consumed = total - lastVolume;
-			if (consumed > 0) return consumed / days;
+		if (span >= MIN_SPAN_DAYS) {
+			const intervals: RateInterval[] = [];
+			for (let i = 0; i < events.length - 1; i++) {
+				// 区間 i の消費 ≈ その区間の始点で買った量。最新購入分は未消費なので区間の元にしない。
+				intervals.push({ days: (events[i + 1].at - events[i].at) / MS_PER_DAY, volume: events[i].volume });
+			}
+			const rate = weightedRatePerDay(intervals, RATE_HALFLIFE_CYCLES);
+			if (rate !== null) return rate;
 		}
 	}
 

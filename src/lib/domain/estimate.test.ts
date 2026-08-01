@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
 	consumptionRatePerDay,
 	estimate,
+	weightedRatePerDay,
 	MS_PER_DAY,
-	type EstimateInput
+	type EstimateInput,
+	type RateInterval
 } from './estimate';
 import type { Purchase, RanOutEvent, RemainingAdjustment } from '$lib/types';
 
@@ -123,6 +125,56 @@ describe('consumptionRatePerDay', () => {
 		});
 		expect(consumptionRatePerDay(input)).toBeNull();
 	});
+
+	it('直近の消費増(倍増)に、素朴な平均より速く追従する(recency 減衰)', () => {
+		// 前半 3 サイクル=30日/300ml(10ml/day)、後半 3 サイクル=15日/300ml(20ml/day)。
+		const ranOutEvents = [0, 30, 60, 90, 105, 120, 135].map((d) => ranOut(d));
+		const purchases = [30, 60, 90, 105, 120, 135].map((d) => purchase(d, 300));
+		const rate = consumptionRatePerDay(baseInput({ purchases, ranOutEvents }));
+		// 素朴な等重み平均は 1800/135 = 13.33。減衰(H=3)は直近の 20 側へ寄って ≈15。
+		expect(rate).not.toBeNull();
+		expect(rate!).toBeGreaterThan(13.34); // 等重み平均より必ず上(直近を重く見る)
+		expect(rate!).toBeLessThan(20); // ただし急には飛びつかない
+		expect(rate!).toBeCloseTo(15.0, 1);
+	});
+});
+
+describe('weightedRatePerDay: recency 加重', () => {
+	const twoRates: RateInterval[] = [
+		{ days: 30, volume: 300 }, // 古い区間: 10ml/day
+		{ days: 15, volume: 300 } // 新しい区間: 20ml/day
+	];
+
+	it('単一区間はそのままレートを返す', () => {
+		expect(weightedRatePerDay([{ days: 20, volume: 500 }], 3)).toBeCloseTo(25, 10);
+	});
+
+	it('半減期 ∞ は素朴な長期平均(Σvolume/Σdays)に一致する', () => {
+		// (300+300)/(30+15) = 13.333…
+		expect(weightedRatePerDay(twoRates, Infinity)).toBeCloseTo(600 / 45, 10);
+	});
+
+	it('半減期が短いほど最新区間のレート(20)へ寄る(単調)', () => {
+		const inf = weightedRatePerDay(twoRates, Infinity)!;
+		const h3 = weightedRatePerDay(twoRates, 3)!;
+		const h1 = weightedRatePerDay(twoRates, 1)!;
+		expect(h3).toBeGreaterThan(inf);
+		expect(h1).toBeGreaterThan(h3);
+		expect(h1).toBeLessThan(20); // 最新区間の値は超えない
+	});
+
+	it('全区間が同じレートなら半減期に依らず一定', () => {
+		const same: RateInterval[] = [
+			{ days: 30, volume: 300 },
+			{ days: 60, volume: 600 }
+		]; // どちらも 10ml/day
+		expect(weightedRatePerDay(same, 2)).toBeCloseTo(10, 10);
+		expect(weightedRatePerDay(same, Infinity)).toBeCloseTo(10, 10);
+	});
+
+	it('加重消費量が 0(全区間 volume 0)なら null', () => {
+		expect(weightedRatePerDay([{ days: 30, volume: 0 }], 3)).toBeNull();
+	});
 });
 
 describe('estimate: 残量', () => {
@@ -165,15 +217,15 @@ describe('estimate: 残量', () => {
 	});
 
 	it('使い切りイベントを基準に残量がリセットされる', () => {
-		// 購入: 0日(400), 25日(300), 40日(400)。長期平均レート = (1100−400)/40 = 17.5ml/day。
+		// 購入: 0/30/60日 各300(等間隔=レート10ml/day、減衰の有無に依らず一定)。使い切り1件。
 		const input = baseInput({
-			purchases: [purchase(0, 400), purchase(25, 300), purchase(40, 400)],
+			purchases: [purchase(0, 300), purchase(30, 300), purchase(60, 300)],
 			ranOutEvents: [ranOut(20)]
 		});
-		// 基準 = 20日で残量0。以降(20<t<=45)の購入: 25日(300)+40日(400)=700 投入。
-		// 45日時点: 0 + 700 − 17.5*(45−20)=437.5 → 262.5
-		const e = estimate(input, day(45));
-		expect(e.remaining).toBeCloseTo(262.5, 10);
+		// 基準 = 20日で残量0。以降(20<t<=70)の購入: 30日(300)+60日(300)=600 投入。
+		// 70日時点: 0 + 600 − 10*(70−20) = 600 − 500 = 100
+		const e = estimate(input, day(70));
+		expect(e.remaining).toBeCloseTo(100, 10);
 	});
 
 	it('残量補正が最新なら実測値を原点にする', () => {
