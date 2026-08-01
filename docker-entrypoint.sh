@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
 
+# 起動バナー(自動更新の確認用)。Watchtower が新イメージへ入れ替えるとこの行がログに出る。
+echo "=== stockify container started at $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
+
 # 起動時に DB マイグレーションを適用してからサーバーを起動する。
 echo "マイグレーションを適用します (DATABASE_PATH=$DATABASE_PATH)"
 node scripts/migrate.js
