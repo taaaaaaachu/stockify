@@ -1,0 +1,72 @@
+name: CI
+
+# push(main)と全 PR で lint/型チェック/テストを回し、
+# main に入ったものだけ Docker イメージをビルドして GHCR に配布する。
+# NAS 側は Watchtower が GHCR を監視して自動 pull するため、ここでは配布まで。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # --- CI: 静的検査とテスト ---
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # svelte-kit sync は prepare(postinstall)で走る。
+      - run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: 型チェック (svelte-check)
+        run: npm run check
+
+      - name: テスト (vitest)
+        run: npm test
+
+  # --- CD の前半: main のイメージをビルドして GHCR へ push ---
+  # NAS への反映は Watchtower が pull で行うので、ここはレジストリ配布まで。
+  build-push:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # GHCR への push は GITHUB_TOKEN で完結(追加 secret 不要)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: GHCR にログイン
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: タグ・ラベルを算出
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/taaaaaaachu/stockify
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: ビルドして GHCR へ push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64 # NAS は x86_64。クロスビルド不要
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

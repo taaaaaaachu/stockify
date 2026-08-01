@@ -18,8 +18,11 @@ export interface EstimateInput {
 	leadTimeDays: number | null;
 	/** 全体既定のリードタイム(日)。 */
 	defaultLeadTimeDays: number;
-	/** 有効な定期便があるか(あれば購入推奨の対象外)。 */
-	hasActiveSubscription: boolean;
+	/**
+	 * アクティブな定期便のうち最も早い次回配送日(epoch ミリ秒)。定期便が無ければ null。
+	 * この配送が枯渇予想日までに届くなら、自動補充される前提で購入推奨を出さない(ADR 0002 改訂)。
+	 */
+	nextSubscriptionDeliveryAt: number | null;
 	purchases: Purchase[];
 	ranOutEvents: RanOutEvent[];
 	adjustments: RemainingAdjustment[];
@@ -52,46 +55,124 @@ function sumVolume(purchases: Purchase[], predicate: (p: Purchase) => boolean): 
 }
 
 /**
+ * 消費レート推定の recency 減衰の半減期(サイクル数)。
+ * 「H サイクル前の観測は重みが半分」。∞ にすると等重み(=素朴な長期平均)に一致する。
+ * 3 は、生活の変化への追従とノイズ耐性のバランスが最も良い点(ADR 0001 のプロトタイプで確認)。
+ */
+export const RATE_HALFLIFE_CYCLES = 3;
+
+/**
+ * 購入区間の品質重み(使い切り区間 = 1 に対する相対値)。
+ * 使い切り(空→空)は消費の確定サンプルなので重み 1、購入間隔は「買った分が次までに使い切られた」
+ * という定常近似にすぎないため 0.5(=半分の信頼度)。統合プールで両者を混ぜるときに効く(ADR 0001 改訂)。
+ */
+export const PURCHASE_QUALITY = 0.5;
+
+/** 1 区間(前の基準から次の基準まで)の観測: その間に消費した量・経過日数・信頼度。 */
+export interface RateInterval {
+	days: number;
+	volume: number;
+	/** 信頼度(省略時 1)。使い切り区間 = 1、購入区間 = PURCHASE_QUALITY。 */
+	quality?: number;
+}
+
+/**
+ * 区間列(古い順)から、直近ほど重い指数減衰 × 区間の信頼度で加重した消費レート(volume/日)を求める。
+ *   rate = Σ qᵢ·wᵢ·volumeᵢ / Σ qᵢ·wᵢ·daysᵢ,  wᵢ = 0.5^(何区間前か / halfLifeCycles), qᵢ = quality
+ * 最新区間を age 0 とする。halfLifeCycles = Infinity かつ quality 一律なら素朴な長期平均に一致。
+ * 加重期間・加重消費量がともに正のときだけ値を返し、そうでなければ null。
+ */
+export function weightedRatePerDay(intervals: RateInterval[], halfLifeCycles: number): number | null {
+	const newest = intervals.length - 1;
+	let weightedVolume = 0;
+	let weightedDays = 0;
+	for (let i = 0; i <= newest; i++) {
+		const age = newest - i;
+		const decay = halfLifeCycles === Infinity ? 1 : Math.pow(0.5, age / halfLifeCycles);
+		const w = decay * (intervals[i].quality ?? 1);
+		weightedVolume += w * intervals[i].volume;
+		weightedDays += w * intervals[i].days;
+	}
+	if (weightedDays <= 0 || weightedVolume <= 0) return null;
+	return weightedVolume / weightedDays;
+}
+
+/** 同一時刻の購入をまとめる(購入間隔の分解でゼロ幅区間を作らないため)。 */
+function coalescePurchasesByTime(purchasesAsc: Purchase[]): { at: number; volume: number }[] {
+	const byTime = new Map<number, number>();
+	for (const p of purchasesAsc) {
+		byTime.set(p.purchasedAt, (byTime.get(p.purchasedAt) ?? 0) + p.volume);
+	}
+	return [...byTime.entries()].sort((a, b) => a[0] - b[0]).map(([at, volume]) => ({ at, volume }));
+}
+
+/**
+ * 時刻順の購入イベント列から購入区間の観測を作る。
+ * 区間 i の消費 ≈ その区間の始点で買った量(最新購入分は未消費なので区間の元にしない)。
+ */
+function purchaseIntervals(
+	events: { at: number; volume: number }[],
+	quality: number
+): RateInterval[] {
+	const intervals: RateInterval[] = [];
+	for (let i = 0; i < events.length - 1; i++) {
+		intervals.push({ days: (events[i + 1].at - events[i].at) / MS_PER_DAY, volume: events[i].volume, quality });
+	}
+	return intervals;
+}
+
+/**
  * 消費レート(volume/day)を推定する。
  *
  * 優先順位(ADR 0001):
- *  1. 使い切りイベントが 2 件以上 → 空〜空の間に購入した総量 ÷ その期間。
- *     残量が確実に 0 になった 2 点で挟むため、最も正確な消費サンプル。
- *  2. 購入が 2 件以上 → 長期平均方式: (累計購入量 − 直近購入量) ÷ (初回〜直近の期間)。
- *     直近購入分はまだ消費されていないため除く。早買い/まとめ買いのブレは
- *     期間全体で平均化され、購入を重ねるほど正確になる。
+ *  1. 使い切りイベントが 2 件以上 → 空〜空の各区間(信頼度 1)に、
+ *     「最後の使い切り以降の購入区間」(信頼度 PURCHASE_QUALITY)を足した統合プールを加重平均。
+ *     使い切りが確定サンプルとして支配しつつ、使い切りが古くなると最近の購入ペースが効いてくる。
+ *  2. 使い切りが 1 件以下 → 購入間隔だけで加重平均。
  *  3. 仮の値 → 初回内容量 ÷ 想定日数。
  *
- * いずれも消費量が正で期間が正のときだけ採用し、満たさなければ次の手段へ落ちる。
- * どれも使えなければ null。
+ * 1・2 とも複数の区間観測を、直近ほど重い指数減衰 × 区間の信頼度で加重平均する
+ * (halfLifeCycles = ∞ かつ信頼度一律なら素朴な長期平均に一致)。これにより、購入を重ねるほど
+ * 精度が上がりつつ、生活の変化には数サイクルで追従し、大昔のパターンは自然に薄れる。
+ * どの手段も使えなければ null。
  */
 export function consumptionRatePerDay(input: EstimateInput): number | null {
 	const purchases = [...input.purchases].sort(byTimeAsc((p) => p.purchasedAt));
 	const ranOuts = [...input.ranOutEvents].sort(byTimeAsc((e) => e.at));
+	const events = coalescePurchasesByTime(purchases);
 
-	// 1. 使い切りイベント基準(最優先)
-	if (ranOuts.length >= 2) {
-		const first = ranOuts[0].at;
-		const last = ranOuts[ranOuts.length - 1].at;
-		const days = (last - first) / MS_PER_DAY;
-		if (days >= MIN_SPAN_DAYS) {
-			const consumed = sumVolume(purchases, (p) => p.purchasedAt > first && p.purchasedAt <= last);
-			if (consumed > 0) return consumed / days;
+	// 1. 使い切り区間 + 最後の使い切り以降の購入区間(tail)を1プールに統合して加重平均。
+	const ranOutTimes = [...new Set(ranOuts.map((e) => e.at))].sort((a, b) => a - b);
+	if (ranOutTimes.length >= 2) {
+		const span = (ranOutTimes[ranOutTimes.length - 1] - ranOutTimes[0]) / MS_PER_DAY;
+		if (span >= MIN_SPAN_DAYS) {
+			// 使い切り区間(空→空、信頼度 1)。
+			const pool: RateInterval[] = [];
+			for (let i = 1; i < ranOutTimes.length; i++) {
+				const lo = ranOutTimes[i - 1];
+				const hi = ranOutTimes[i];
+				const volume = sumVolume(purchases, (p) => p.purchasedAt > lo && p.purchasedAt <= hi);
+				pool.push({ days: (hi - lo) / MS_PER_DAY, volume, quality: 1 });
+			}
+			// tail: 最後の使い切りより後の購入区間(信頼度 PURCHASE_QUALITY)を時系列で後ろに足す。
+			// 使い切りをマメに記録している間は tail が生じず、従来どおり使い切り区間だけになる。
+			const lastRanOut = ranOutTimes[ranOutTimes.length - 1];
+			const tail = events.filter((e) => e.at > lastRanOut);
+			pool.push(...purchaseIntervals(tail, PURCHASE_QUALITY));
+
+			const rate = weightedRatePerDay(pool, RATE_HALFLIFE_CYCLES);
+			if (rate !== null) return rate;
 		}
 	}
 
-	// 2. 購入間隔の長期平均
-	if (purchases.length >= 2) {
-		const first = purchases[0].purchasedAt;
-		const last = purchases[purchases.length - 1].purchasedAt;
-		const days = (last - first) / MS_PER_DAY;
+	// 2. 購入間隔の(recency 加重)長期平均。
+	if (events.length >= 2) {
+		const span = (events[events.length - 1].at - events[0].at) / MS_PER_DAY;
 		// 期間が短すぎる(=作成直後にまとめて買い足した等)と極小の時間で割って
 		// レートが爆発するため、最低期間を満たすまでは採用せず仮の値へ落とす。
-		if (days >= MIN_SPAN_DAYS) {
-			const total = sumVolume(purchases, () => true);
-			const lastVolume = purchases[purchases.length - 1].volume;
-			const consumed = total - lastVolume;
-			if (consumed > 0) return consumed / days;
+		if (span >= MIN_SPAN_DAYS) {
+			const rate = weightedRatePerDay(purchaseIntervals(events, 1), RATE_HALFLIFE_CYCLES);
+			if (rate !== null) return rate;
 		}
 	}
 
@@ -152,7 +233,8 @@ function pickAnchor(input: EstimateInput, purchasesAsc: Purchase[]): Anchor | nu
  *
  * 残量 = 基準残量 + (基準時刻より後の購入で入った量) − 消費レート × 経過日数。
  * 枯渇予想日 = 残量がゼロを切る時点(現在の残量とレートから外挿。将来の定期便配送は織り込まない)。
- * 購入推奨日 = 枯渇予想日 − リードタイム(品目固有 > 全体既定)。定期便が有効なら null。
+ * 購入推奨日 = 枯渇予想日 − リードタイム(品目固有 > 全体既定)。
+ *   ただし定期便の次回配送が枯渇予想日までに届くなら、自動補充される前提で null(ADR 0002 改訂)。
  */
 export function estimate(input: EstimateInput, now: number): Estimate {
 	const purchasesAsc = [...input.purchases].sort(byTimeAsc((p) => p.purchasedAt));
@@ -188,9 +270,15 @@ export function estimate(input: EstimateInput, now: number): Estimate {
 	}
 
 	let recommendedPurchaseAt: number | null = null;
-	if (depletionAt !== null && !input.hasActiveSubscription) {
-		const leadDays = input.leadTimeDays ?? input.defaultLeadTimeDays;
-		recommendedPurchaseAt = depletionAt - leadDays * MS_PER_DAY;
+	if (depletionAt !== null) {
+		// 定期便の次回配送が枯渇予想日までに届くなら、補充で足りるとみなし推奨を出さない。
+		const coveredBySubscription =
+			input.nextSubscriptionDeliveryAt !== null &&
+			input.nextSubscriptionDeliveryAt <= depletionAt;
+		if (!coveredBySubscription) {
+			const leadDays = input.leadTimeDays ?? input.defaultLeadTimeDays;
+			recommendedPurchaseAt = depletionAt - leadDays * MS_PER_DAY;
+		}
 	}
 
 	return { ratePerDay, remaining, remainingClamped, depletionAt, recommendedPurchaseAt };
@@ -201,7 +289,7 @@ export function estimateInputFromItem(
 	item: Pick<StockItem, 'leadTimeDays' | 'provisionalDaysToDeplete'>,
 	data: {
 		defaultLeadTimeDays: number;
-		hasActiveSubscription: boolean;
+		nextSubscriptionDeliveryAt: number | null;
 		purchases: Purchase[];
 		ranOutEvents: RanOutEvent[];
 		adjustments: RemainingAdjustment[];
@@ -211,7 +299,7 @@ export function estimateInputFromItem(
 		provisionalDaysToDeplete: item.provisionalDaysToDeplete,
 		leadTimeDays: item.leadTimeDays,
 		defaultLeadTimeDays: data.defaultLeadTimeDays,
-		hasActiveSubscription: data.hasActiveSubscription,
+		nextSubscriptionDeliveryAt: data.nextSubscriptionDeliveryAt,
 		purchases: data.purchases,
 		ranOutEvents: data.ranOutEvents,
 		adjustments: data.adjustments

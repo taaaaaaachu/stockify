@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { generateDueDeliveries, MAX_BACKFILL } from './subscription';
+import {
+	generateDueDeliveries,
+	nextDeliveryAfterSkip,
+	isAcceptableNextDelivery,
+	MAX_BACKFILL
+} from './subscription';
 import { MS_PER_DAY } from './estimate';
 import type { Subscription } from '$lib/types';
 
@@ -58,5 +63,40 @@ describe('generateDueDeliveries', () => {
 		const r = generateDueDeliveries(sub({ intervalDays: 1, nextDeliveryAt: day(0) }), day(10000));
 		expect(r.deliveries.length).toBe(MAX_BACKFILL);
 		expect(r.nextDeliveryAt).toBeGreaterThan(day(10000));
+	});
+});
+
+describe('nextDeliveryAfterSkip', () => {
+	it('次回予定日を 1 間隔ぶん先送りする', () => {
+		expect(nextDeliveryAfterSkip(sub({ nextDeliveryAt: day(10), intervalDays: 30 }))).toBe(day(40));
+	});
+
+	it('端数の間隔でも 1 間隔ぶんだけ進む', () => {
+		expect(nextDeliveryAfterSkip(sub({ nextDeliveryAt: day(10), intervalDays: 0.5 }))).toBe(
+			day(10) + 0.5 * MS_PER_DAY
+		);
+	});
+});
+
+describe('isAcceptableNextDelivery', () => {
+	// タイムゾーン非依存にするため、判定基準の「今日 0:00」を同じ流儀で組み立てて比較する。
+	const now = Date.now();
+	const todayStart = (() => {
+		const d = new Date(now);
+		d.setHours(0, 0, 0, 0);
+		return d.getTime();
+	})();
+
+	it('今日 0:00 は受け付ける', () => {
+		expect(isAcceptableNextDelivery(todayStart, now)).toBe(true);
+	});
+
+	it('未来日は受け付ける', () => {
+		expect(isAcceptableNextDelivery(todayStart + 5 * MS_PER_DAY, now)).toBe(true);
+	});
+
+	it('昨日以前は受け付けない', () => {
+		expect(isAcceptableNextDelivery(todayStart - 1, now)).toBe(false);
+		expect(isAcceptableNextDelivery(todayStart - 3 * MS_PER_DAY, now)).toBe(false);
 	});
 });

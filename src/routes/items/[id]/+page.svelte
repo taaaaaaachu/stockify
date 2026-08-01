@@ -27,7 +27,8 @@
 			? remainingTrajectory(
 					estimateInputFromItem(bundle.item, {
 						defaultLeadTimeDays: store.settings.defaultLeadTimeDays,
-						hasActiveSubscription: bundle.subscriptions.some((s) => !s.paused),
+						// 残量推移(グラフ)はレートと履歴だけで決まり、この値は使わないため null で足りる。
+						nextSubscriptionDeliveryAt: null,
 						purchases: bundle.purchases,
 						ranOutEvents: bundle.ranOutEvents,
 						adjustments: bundle.adjustments
@@ -122,6 +123,28 @@
 		subVolume = '';
 	}
 
+	// 次回配送を 1 回スキップ(次回予定日を 1 間隔ぶん先送り、購入は生成しない)。
+	async function skipSubscription() {
+		if (!activeSub) return;
+		await store.skipSubscription(activeSub);
+	}
+
+	// 次回日変更(その場で type=date、今日以降のみ)。
+	const todayInput = localDateInput();
+	let editingNext = $state(false);
+	let nextDate = $state('');
+	function startEditNext() {
+		if (!activeSub) return;
+		nextDate = localDateInput(new Date(activeSub.nextDeliveryAt));
+		editingNext = true;
+	}
+	async function saveNextDate(e: SubmitEvent) {
+		e.preventDefault();
+		if (!activeSub) return;
+		await store.setSubscriptionNextDelivery(activeSub.id, dateInputToTimestamp(nextDate));
+		editingNext = false;
+	}
+
 	// --- 品目編集 ---
 	let editing = $state(false);
 	let eName = $state('');
@@ -191,7 +214,15 @@
 			<div>枯渇予想: <b>{formatDate(row.estimate.depletionAt)}</b>({formatDepletion(row.estimate.depletionAt, store.now)})</div>
 			<div>
 				購入推奨:
-				<b>{row.hasActiveSubscription ? '定期便で自動補充' : formatDate(row.estimate.recommendedPurchaseAt)}</b>
+				<b>
+					{#if row.estimate.recommendedPurchaseAt !== null}
+						{formatDate(row.estimate.recommendedPurchaseAt)}
+					{:else if row.hasActiveSubscription}
+						定期便で自動補充
+					{:else}
+						—
+					{/if}
+				</b>
 			</div>
 		</div>
 	</div>
@@ -269,7 +300,19 @@
 				)} ・ 次回 {formatDate(activeSub.nextDeliveryAt)}
 				{#if activeSub.paused}<span style="color:var(--muted);">(一時停止中)</span>{/if}
 			</div>
-			<div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+			<div style="display:flex; gap:0.5rem; margin-top:0.5rem; flex-wrap:wrap;">
+				{#if !activeSub.paused}
+					<button
+						onclick={skipSubscription}
+						style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+						>スキップ</button
+					>
+				{/if}
+				<button
+					onclick={startEditNext}
+					style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+					>次回日変更</button
+				>
 				<button
 					onclick={() => store.editSubscription(activeSub.id, { paused: !activeSub.paused })}
 					style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
@@ -281,6 +324,22 @@
 					>解約</button
 				>
 			</div>
+			{#if editingNext}
+				<form onsubmit={saveNextDate} style="display:flex; gap:0.4rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
+					<input bind:value={nextDate} type="date" min={todayInput} required />
+					<button
+						type="submit"
+						style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+						>変更</button
+					>
+					<button
+						type="button"
+						onclick={() => (editingNext = false)}
+						style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+						>やめる</button
+					>
+				</form>
+			{/if}
 		{:else}
 			<form onsubmit={addSubscription} style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:end;">
 				<label style={inputRow}><span style="font-size:0.85rem;">間隔(日)</span>

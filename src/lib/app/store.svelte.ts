@@ -10,6 +10,8 @@ import type {
 	SubscriptionInput
 } from '$lib/repo/types';
 import type { InstanceRole, HouseholdRole } from '$lib/rbac';
+import type { Subscription } from '$lib/types';
+import { nextDeliveryAfterSkip, isAcceptableNextDelivery } from '$lib/domain/subscription';
 
 export interface AuthUser {
 	id: string;
@@ -170,6 +172,25 @@ class Store {
 	}
 	async removeSubscription(id: string): Promise<void> {
 		await this.repo.deleteSubscription(id);
+		await this.reload();
+	}
+	/**
+	 * 次回配送を 1 回ぶんスキップする。次回予定日を 1 間隔ぶん先送りするだけで、
+	 * 購入は生成しない(先送り後の予定日は未来なので遅延生成も走らない)。
+	 */
+	async skipSubscription(
+		sub: Pick<Subscription, 'id' | 'intervalDays' | 'nextDeliveryAt'>
+	): Promise<void> {
+		await this.repo.updateSubscription(sub.id, { nextDeliveryAt: nextDeliveryAfterSkip(sub) });
+		await this.reload();
+	}
+	/**
+	 * 次回予定日を任意日へ変更する。過去日(今日の 0:00 より前)は受け付けない
+	 * — 遡っての一括生成を避けるため。過去分の登録は購入の手動追加が担う。
+	 */
+	async setSubscriptionNextDelivery(id: string, at: number): Promise<void> {
+		if (!isAcceptableNextDelivery(at, Date.now())) return;
+		await this.repo.updateSubscription(id, { nextDeliveryAt: at });
 		await this.reload();
 	}
 
