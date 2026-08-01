@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { store } from '$lib/app/store.svelte';
 	import { buildRow } from '$lib/domain/dashboard';
@@ -156,7 +157,7 @@
 	async function removeItem() {
 		if (!confirm('この品目と配下のすべての記録を削除します。よろしいですか?')) return;
 		await store.removeItem(id);
-		await goto('/');
+		await goto(resolve('/'));
 	}
 
 	const sectionStyle =
@@ -164,7 +165,7 @@
 	const inputRow = 'display:flex; flex-direction:column; gap:0.2rem; flex:1;';
 </script>
 
-<a href="/" style="color:var(--muted); text-decoration:none; font-size:0.9rem;">← 在庫へ戻る</a>
+<a href={resolve('/')} style="color:var(--muted); text-decoration:none; font-size:0.9rem;">← 在庫へ戻る</a>
 
 {#if !store.loaded}
 	<p style="color:var(--muted);">読み込み中…</p>

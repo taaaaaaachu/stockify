@@ -26,11 +26,6 @@ export default ts.config(
 	{
 		languageOptions: {
 			globals: { ...globals.browser, ...globals.node }
-		},
-		rules: {
-			// resolve() ベースのリンク解決は未採用(base path なしのルート配信)。
-			// 全内部リンクに resolve() を強制する規約は使わないため無効化。
-			'svelte/no-navigation-without-resolve': 'off'
 		}
 	},
 	{

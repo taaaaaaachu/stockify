@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { store } from '$lib/app/store.svelte';
 	import { localDateInput, dateInputToTimestamp } from '$lib/format';
 
@@ -65,14 +66,14 @@
 				purchasedAt: dateInputToTimestamp(firstDate),
 				source: 'manual'
 			});
-			await goto(`/items/${id}`);
+			await goto(resolve('/items/[id]', { id }));
 		} finally {
 			saving = false;
 		}
 	}
 </script>
 
-<a href="/" style="color:var(--muted); text-decoration:none; font-size:0.9rem;">← 在庫へ戻る</a>
+<a href={resolve('/')} style="color:var(--muted); text-decoration:none; font-size:0.9rem;">← 在庫へ戻る</a>
 <h1 style="font-size:1.3rem;">品目を追加</h1>
 
 <form onsubmit={submit} style="display:flex; flex-direction:column; gap:0.9rem;">

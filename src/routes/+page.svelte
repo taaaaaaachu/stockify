@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { store } from '$lib/app/store.svelte';
 	import { buildDashboard } from '$lib/domain/dashboard';
 	import { formatDepletion, formatQuantity } from '$lib/format';
@@ -11,7 +12,7 @@
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
 	<h1 style="margin:0; font-size:1.4rem;">在庫</h1>
 	<a
-		href="/items/new"
+		href={resolve('/items/new')}
 		style="background:var(--accent); color:#fff; text-decoration:none;
 		       padding:0.4rem 0.8rem; border-radius:0.5rem; font-size:0.9rem;"
 	>
@@ -30,7 +31,7 @@
 		{#each rows as row (row.item.id)}
 			<li>
 				<a
-					href="/items/{row.item.id}"
+					href={resolve('/items/[id]', { id: row.item.id })}
 					style="display:block; text-decoration:none; color:inherit; background:var(--card);
 					       border:1px solid var(--border); border-radius:0.6rem; padding:0.8rem;"
 				>

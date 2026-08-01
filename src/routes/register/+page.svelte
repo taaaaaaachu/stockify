@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
 	let { data, form } = $props();
 </script>
 
@@ -43,5 +44,5 @@
 		style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.6rem; cursor:pointer;"
 		>登録する</button
 	>
-	<a href="/login" style="color:var(--muted); font-size:0.9rem;">ログインはこちら</a>
+	<a href={resolve('/login')} style="color:var(--muted); font-size:0.9rem;">ログインはこちら</a>
 </form>

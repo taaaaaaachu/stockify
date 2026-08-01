@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { store } from '$lib/app/store.svelte';
 	import {
 		pushSupported,
@@ -119,7 +120,7 @@
 		<h2 style="font-size:1.05rem;">購入リマインド通知</h2>
 		{#if !store.user}
 			<p style="color:var(--muted); font-size:0.9rem;">
-				通知は会員モードで使えます。<a href="/login">ログイン</a>してください。
+				通知は会員モードで使えます。<a href={resolve('/login')}>ログイン</a>してください。
 			</p>
 		{:else if pushState === 'loading'}
 			<p style="color:var(--muted);">確認中…</p>

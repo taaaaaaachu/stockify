@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { page } from '$app/state';
 	import { invalidateAll } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { store } from '$lib/app/store.svelte';
 
 	let { data, children } = $props();
@@ -19,7 +20,7 @@
 		{ href: '/', label: '在庫' },
 		{ href: '/shopping', label: '買い物リスト' },
 		{ href: '/settings', label: '設定' }
-	];
+	] as const;
 
 	async function switchHousehold(e: Event) {
 		const id = (e.currentTarget as HTMLSelectElement).value;
@@ -40,11 +41,11 @@
 		style="max-width:48rem; margin:0 auto; padding:0.75rem 1rem;
 		       display:flex; align-items:center; gap:1rem; flex-wrap:wrap;"
 	>
-		<a href="/" style="font-weight:700; color:var(--accent); text-decoration:none;">Stockify</a>
+		<a href={resolve('/')} style="font-weight:700; color:var(--accent); text-decoration:none;">Stockify</a>
 		<nav style="display:flex; gap:0.75rem; font-size:0.9rem;">
 			{#each nav as n (n.href)}
 				<a
-					href={n.href}
+					href={resolve(n.href)}
 					style="text-decoration:none; color:{page.url.pathname === n.href
 						? 'var(--accent)'
 						: 'var(--muted)'};"
@@ -67,7 +68,7 @@
 						{/each}
 					</select>
 				{/if}
-				<a href="/account" style="color:var(--muted); text-decoration:none;">{data.user.username}</a>
+				<a href={resolve('/account')} style="color:var(--muted); text-decoration:none;">{data.user.username}</a>
 				<form method="POST" action="/logout">
 					<button
 						type="submit"
@@ -76,7 +77,7 @@
 					>
 				</form>
 			{:else}
-				<a href="/login" style="color:var(--accent); text-decoration:none;">ログイン</a>
+				<a href={resolve('/login')} style="color:var(--accent); text-decoration:none;">ログイン</a>
 				<span style="color:var(--muted);">(ゲスト)</span>
 			{/if}
 		</div>

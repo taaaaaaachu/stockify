@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { store } from '$lib/app/store.svelte';
 	import { buildDashboard, shoppingList } from '$lib/domain/dashboard';
 	import { formatDepletion, formatQuantity } from '$lib/format';
@@ -48,7 +49,7 @@
 			>
 				<div style="flex:1;">
 					<div style="display:flex; align-items:center; gap:0.5rem;">
-						<a href="/items/{row.item.id}" style="font-weight:600; color:inherit;"
+						<a href={resolve('/items/[id]', { id: row.item.id })} style="font-weight:600; color:inherit;"
 							>{row.item.name}</a
 						>
 						<StatusBadge status={row.status} />
