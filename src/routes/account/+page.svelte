@@ -4,6 +4,7 @@
 	import { store } from '$lib/app/store.svelte';
 	import { IndexedDbRepository } from '$lib/repo/indexeddb';
 	import { formatDate } from '$lib/format';
+	import { buildInviteRequestBody } from '$lib/app/inviteRequest';
 
 	let { data } = $props();
 
@@ -47,12 +48,10 @@
 		e.preventDefault();
 		busy = true;
 		try {
-			const body: Record<string, unknown> = {};
-			if (inviteExpiry.trim() !== '') body.expiresInDays = Number(inviteExpiry);
 			const res = await fetch('/api/invites', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(body)
+				body: JSON.stringify(buildInviteRequestBody(inviteExpiry))
 			});
 			const json = await res.json();
 			lastCode = json.code ?? null;
