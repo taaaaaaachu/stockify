@@ -9,6 +9,7 @@ import {
 	dueItemNamesForUser,
 	notifyDueRestocks,
 	matchesNotifySlot,
+	normalizeNotifyMinute,
 	type SendResult
 } from './push';
 import { pushSubscriptions } from './db/schema';
@@ -134,5 +135,12 @@ describe('matchesNotifySlot', () => {
 		expect(matchesNotifySlot(540, 547)).toBe(true); // 09:07 → スロット540
 		expect(matchesNotifySlot(540, 555)).toBe(false); // 09:15 → スロット555
 		expect(matchesNotifySlot(600, 540)).toBe(false);
+	});
+
+	it('中途半端な分を15分スロットの開始時刻へ切り捨てる', () => {
+		expect(normalizeNotifyMinute(540)).toBe(540);
+		expect(normalizeNotifyMinute(547)).toBe(540);
+		expect(normalizeNotifyMinute(555)).toBe(555);
+		expect(normalizeNotifyMinute(569)).toBe(555);
 	});
 });

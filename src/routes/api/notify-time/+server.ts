@@ -3,16 +3,18 @@ import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { users } from '$lib/server/db/schema';
 import { requireUser } from '$lib/server/apiGuard';
+import { normalizeNotifyMinute } from '$lib/notify-time';
 import type { RequestHandler } from './$types';
 
-/** 購入リマインドを送る時刻(0:00 からの分・15分刻み)を設定する。 */
+/** 購入リマインドを送る時刻(0:00 からの分)を15分単位へ切り捨てて設定する。 */
 export const PATCH: RequestHandler = async ({ locals, request }) => {
 	const user = requireUser(locals);
 	const body = await request.json().catch(() => null);
 	const minute = Number(body?.minuteOfDay);
-	if (!Number.isInteger(minute) || minute < 0 || minute > 1439 || minute % 15 !== 0) {
-		throw error(400, '通知時刻は 15 分刻み(0〜1439 分)で指定してください。');
+	if (!Number.isInteger(minute) || minute < 0 || minute > 1439) {
+		throw error(400, '通知時刻は 0〜1439 分の整数で指定してください。');
 	}
-	db.update(users).set({ notifyMinuteOfDay: minute }).where(eq(users.id, user.id)).run();
-	return json({ minuteOfDay: minute });
+	const normalizedMinute = normalizeNotifyMinute(minute);
+	db.update(users).set({ notifyMinuteOfDay: normalizedMinute }).where(eq(users.id, user.id)).run();
+	return json({ minuteOfDay: normalizedMinute });
 };

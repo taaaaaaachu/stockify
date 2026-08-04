@@ -7,6 +7,9 @@ import { pushSubscriptions, users, type PushSubscriptionRow } from './db/schema'
 import { listUserHouseholds } from './households';
 import { listBundles } from './stock';
 import { buildDashboard, shoppingList } from '$lib/domain/dashboard';
+import { normalizeNotifyMinute, NOTIFY_SLOT_MINUTES } from '$lib/notify-time';
+
+export { normalizeNotifyMinute, NOTIFY_SLOT_MINUTES } from '$lib/notify-time';
 
 /** 通知間引きの既定クールダウン(この時間内は同じ端末へ再送しない)。 */
 export const NOTIFY_COOLDOWN_MS = 20 * 60 * 60 * 1000; // 20時間
@@ -118,9 +121,6 @@ export function dueItemNamesForUser(db: Db, userId: string, now: number): string
 	return names;
 }
 
-/** 通知スロットの長さ(分)。 */
-export const NOTIFY_SLOT_MINUTES = 15;
-
 /**
  * ユーザーの設定時刻(userMinute)が、現在の 15 分スロットに該当するか。
  * 現在分をスロット幅で切り捨てた値と一致すれば送信対象。
@@ -130,7 +130,7 @@ export function matchesNotifySlot(
 	nowMinuteOfDay: number,
 	slot = NOTIFY_SLOT_MINUTES
 ): boolean {
-	return Math.floor(nowMinuteOfDay / slot) * slot === userMinute;
+	return normalizeNotifyMinute(nowMinuteOfDay, slot) === userMinute;
 }
 
 export interface NotifyDeps {

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { normalizeNotifyMinute } from '$lib/notify-time';
 	import { store } from '$lib/app/store.svelte';
 	import {
 		pushSupported,
@@ -81,12 +82,13 @@
 	async function changeNotifyTime(e: Event) {
 		const [h, m] = (e.currentTarget as HTMLInputElement).value.split(':').map(Number);
 		if (Number.isNaN(h) || Number.isNaN(m)) return;
-		const minuteOfDay = h * 60 + m;
-		await fetch('/api/notify-time', {
+		const minuteOfDay = normalizeNotifyMinute(h * 60 + m);
+		const response = await fetch('/api/notify-time', {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ minuteOfDay })
 		});
+		if (!response.ok) return;
 		await invalidateAll();
 		notifyTimeSaved = true;
 		setTimeout(() => (notifyTimeSaved = false), 1500);
