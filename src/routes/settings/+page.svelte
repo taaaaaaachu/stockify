@@ -76,7 +76,9 @@
 		return `${h}:${min}`;
 	}
 	// input[type=time] の "HH:MM" 現在値(ユーザー設定)。
-	const notifyTime = $derived(minuteToTime(store.user?.notifyMinuteOfDay ?? 540));
+	const notifyTime = $derived(
+		minuteToTime(normalizeNotifyMinute(store.user?.notifyMinuteOfDay ?? 540))
+	);
 	let notifyTimeSaved = $state(false);
 
 	async function changeNotifyTime(e: Event) {
