@@ -370,7 +370,6 @@
 {#if data.user?.instanceRole === 'super_admin'}
 	<div style={section}>
 		<h2 style="margin:0 0 0.5rem; font-size:1rem;">世帯管理</h2>
-		<p style="font-size:0.85rem; color:var(--muted);">所属していない世帯もメタデータだけ確認できます。削除は在庫・所属ユーザーを含めて復元できません。</p>
 		<form onsubmit={createAdminHousehold} style="display:flex; gap:0.5rem; margin-bottom:0.7rem;">
 			<input bind:value={adminHouseholdName} placeholder="世帯名" style="flex:1;" />
 			<button type="submit" disabled={busy} style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;">世帯を作成</button>
