@@ -50,6 +50,7 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 		return false;
 
 	const itemIds = new Set(snapshot.items.map((item) => (item as { id: string }).id));
+	if (itemIds.size !== snapshot.items.length) return false;
 	if (
 		(snapshot.purchases as unknown[]).some((value) => {
 			if (!value || typeof value !== 'object') return true;

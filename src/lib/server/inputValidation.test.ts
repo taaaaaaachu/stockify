@@ -24,6 +24,18 @@ describe('入力検証', () => {
 		expect(isValidSnapshot({ items: [{ ...item, name: '' }], purchases: [], ranOutEvents: [], adjustments: [], subscriptions: [] })).toBe(false);
 	});
 
+	it('重複した品目IDを含むスナップショットを拒否する', () => {
+		expect(
+			isValidSnapshot({
+				items: [item, { ...item, name: '別の洗剤' }],
+				purchases: [],
+				ranOutEvents: [],
+				adjustments: [],
+				subscriptions: []
+			})
+		).toBe(false);
+	});
+
 	it('子レコードの参照先と値を検証する', () => {
 		const valid = {
 			settings: { defaultLeadTimeDays: 7 },
