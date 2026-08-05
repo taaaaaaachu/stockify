@@ -124,6 +124,22 @@
 		}
 	}
 
+	async function removeMember(member: HouseholdMember) {
+		memberError = '';
+		busy = true;
+		try {
+			const res = await fetch(`/api/households/members/${member.userId}/remove`, { method: 'DELETE' });
+			const result = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				memberError = result.message ?? 'メンバーの除名に失敗しました。';
+				return;
+			}
+			await invalidateAll();
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function requestTransfer(member: HouseholdMember) {
 		const res = await fetch('/api/households/transfers', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ candidateUserId: member.userId }) });
 		if (!res.ok) memberError = (await res.json().catch(() => ({}))).message ?? 'owner交代の申請に失敗しました。';
@@ -334,6 +350,9 @@
 					{/if}
 					{#if member.role === 'manager'}
 						<button onclick={() => demoteManager(member)} disabled={busy} style="margin-left:auto; border:1px solid var(--warn); background:var(--card); color:var(--warn); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">managerを解任</button>
+					{/if}
+					{#if member.role !== 'owner'}
+						<button onclick={() => removeMember(member)} disabled={busy} style="border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">除名</button>
 					{/if}
 					{#if member.role !== 'owner'}
 						<button onclick={() => requestTransfer(member)} disabled={busy} style="border:1px solid var(--warn); background:var(--card); color:var(--warn); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">owner候補に指名</button>

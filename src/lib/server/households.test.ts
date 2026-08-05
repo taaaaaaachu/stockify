@@ -16,7 +16,8 @@ import {
 	acceptOwnershipTransfer,
 	joinHouseholdByInvite,
 	listPendingOwnershipTransfers,
-	listHouseholdSummaries
+	listHouseholdSummaries,
+	removeHouseholdMember
 } from './households';
 
 let db: Db;
@@ -167,6 +168,21 @@ describe('世帯ロール管理', () => {
 		expect(promoteMemberToManager(db, household.id, third.user.id)).toBe(true);
 		expect(getMembership(db, third.user.id, household.id)).toBe('manager');
 		expect(promoteMemberToManager(db, household.id, third.user.id)).toBe(false);
+	});
+
+	it('ownerはmemberとmanagerを除名できるがownerは除名できない', () => {
+		const first = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		if (!first.ok) throw new Error('setup failed');
+		const invite = createInvite(db, first.householdId, first.user.id, null);
+		const second = registerUser(db, { username: 'bob', passwordHash: 'x', requireInvite: true, inviteCode: invite.code });
+		if (!second.ok) throw new Error('setup failed');
+		const invite2 = createInvite(db, first.householdId, first.user.id, null);
+		const third = registerUser(db, { username: 'carol', passwordHash: 'x', requireInvite: true, inviteCode: invite2.code });
+		if (!third.ok) throw new Error('setup failed');
+		expect(promoteMemberToManager(db, first.householdId, third.user.id)).toBe(true);
+		expect(removeHouseholdMember(db, first.householdId, second.user.id)).toBe(true);
+		expect(removeHouseholdMember(db, first.householdId, third.user.id)).toBe(true);
+		expect(removeHouseholdMember(db, first.householdId, first.user.id)).toBe(false);
 	});
 });
 

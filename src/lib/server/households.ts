@@ -1,4 +1,4 @@
-import { and, eq, desc, isNull, or, gt, count } from 'drizzle-orm';
+import { and, eq, desc, isNull, or, gt, count, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { randomBytes } from 'node:crypto';
 import type { Db } from './db';
@@ -103,11 +103,17 @@ export function demoteManager(db: Db, householdId: string, userId: string): bool
 	return result.changes > 0;
 }
 
-/** owner以外のメンバーを除名する。 */
+/** owner以外の所属者を除名する。 */
 export function removeHouseholdMember(db: Db, householdId: string, userId: string): boolean {
 	const result = db
 		.delete(memberships)
-		.where(and(eq(memberships.householdId, householdId), eq(memberships.userId, userId), eq(memberships.role, 'member')))
+		.where(
+			and(
+				eq(memberships.householdId, householdId),
+				eq(memberships.userId, userId),
+				inArray(memberships.role, ['manager', 'member'])
+			)
+		)
 		.run();
 	return result.changes > 0;
 }
