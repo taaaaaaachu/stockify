@@ -15,7 +15,8 @@ import {
 	requestOwnershipTransfer,
 	acceptOwnershipTransfer,
 	joinHouseholdByInvite,
-	listPendingOwnershipTransfers
+	listPendingOwnershipTransfers,
+	listHouseholdSummaries
 } from './households';
 
 let db: Db;
@@ -194,6 +195,13 @@ describe('既存アカウントの招待参加', () => {
 		const invite = createInvite(db, household.id, first.user.id, null);
 		expect(joinHouseholdByInvite(db, first.user.id, invite.code)).toEqual({ ok: true, householdId: household.id, role: 'owner' });
 		expect(getMembership(db, first.user.id, household.id)).toBe('owner');
+	});
+});
+
+describe('アカウント画面の世帯情報', () => {
+	it('マイグレーション後は交代申請と世帯サマリーを空状態でも取得できる', () => {
+		expect(listPendingOwnershipTransfers(db, 'unknown-user')).toEqual([]);
+		expect(listHouseholdSummaries(db)).toEqual([]);
 	});
 });
 
