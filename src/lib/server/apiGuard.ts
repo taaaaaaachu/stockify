@@ -5,6 +5,7 @@ interface AuthedUser {
 	id: string;
 	username: string;
 	instanceRole: import('$lib/rbac').InstanceRole;
+	mustChangePassword: boolean;
 }
 
 /** ログイン必須。未ログインなら 401。 */

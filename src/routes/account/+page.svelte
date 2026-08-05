@@ -40,6 +40,23 @@
 		}
 	});
 
+	async function createHousehold(e: SubmitEvent) {
+		e.preventDefault();
+		if (newHousehold.trim() === '') return;
+		busy = true;
+		try {
+			await fetch('/api/households', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ name: newHousehold.trim() })
+			});
+			newHousehold = '';
+			await invalidateAll();
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function changeOwnPassword(e: SubmitEvent) {
 		e.preventDefault();
 		passwordError = '';
@@ -78,23 +95,6 @@
 				return;
 			}
 			resetResult = { username: user.username, password: result.temporaryPassword };
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function createHousehold(e: SubmitEvent) {
-		e.preventDefault();
-		if (newHousehold.trim() === '') return;
-		busy = true;
-		try {
-			await fetch('/api/households', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name: newHousehold.trim() })
-			});
-			newHousehold = '';
-			await invalidateAll();
 		} finally {
 			busy = false;
 		}
@@ -172,7 +172,9 @@
 		<p style="color:var(--warn); margin:0 0 0.6rem;">管理者が発行した一時パスワードです。続けるには新しいパスワードへ変更してください。</p>
 	{/if}
 	<form onsubmit={changeOwnPassword} style="display:flex; flex-direction:column; gap:0.5rem; max-width:28rem;">
-		<input bind:value={currentPassword} type="password" placeholder="現在のパスワード" autocomplete="current-password" required />
+		{#if !store.user?.mustChangePassword}
+			<input bind:value={currentPassword} type="password" placeholder="現在のパスワード" autocomplete="current-password" required />
+		{/if}
 		<input bind:value={newPassword} type="password" placeholder="新しいパスワード(8〜256文字)" autocomplete="new-password" minlength="8" maxlength="256" required />
 		<input bind:value={confirmPassword} type="password" placeholder="新しいパスワード(確認)" autocomplete="new-password" minlength="8" maxlength="256" required />
 		<button type="submit" disabled={busy} style="align-self:flex-start; background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;">パスワードを変更</button>
@@ -182,25 +184,14 @@
 </div>
 
 <div style={section}>
-	<h2 style="margin:0 0 0.5rem; font-size:1rem;">所属している世帯</h2>
-	<ul style="list-style:none; padding:0; margin:0 0 0.7rem;">
-		{#each store.households as h (h.id)}
-			<li style="display:flex; gap:0.5rem; align-items:center; font-size:0.9rem;">
-				<span>{h.name}</span>
-				<span style="color:var(--muted);">({h.role === 'owner' ? 'オーナー' : 'メンバー'})</span>
-				{#if store.activeHousehold?.id === h.id}
-					<span style="color:var(--accent); font-size:0.75rem;">選択中</span>
-				{/if}
-			</li>
-		{/each}
-	</ul>
+	<h2 style="margin:0 0 0.5rem; font-size:1rem;">新しい世帯を作成</h2>
 	<form onsubmit={createHousehold} style="display:flex; gap:0.5rem;">
-		<input bind:value={newHousehold} placeholder="新しい世帯名(例: 実家)" style="flex:1;" />
+		<input bind:value={newHousehold} placeholder="世帯名(例: 実家)" style="flex:1;" />
 		<button
 			type="submit"
 			disabled={busy}
 			style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;"
-			>世帯を作成</button
+			>作成</button
 		>
 	</form>
 </div>

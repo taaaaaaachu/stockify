@@ -15,14 +15,15 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 	const currentPassword = typeof body?.currentPassword === 'string' ? body.currentPassword : '';
 	const newPassword = typeof body?.newPassword === 'string' ? body.newPassword : '';
 	const confirmPassword = typeof body?.confirmPassword === 'string' ? body.confirmPassword : '';
-	if (!currentPassword) throw error(400, '現在のパスワードを入力してください。');
+	if (!user.mustChangePassword && !currentPassword)
+		throw error(400, '現在のパスワードを入力してください。');
 	const passwordError = validatePassword(newPassword);
 	if (passwordError) throw error(400, passwordError);
 	if (newPassword !== confirmPassword)
 		throw error(400, '新しいパスワードと確認用パスワードが一致しません。');
-	if (currentPassword === newPassword)
+	if (!user.mustChangePassword && currentPassword === newPassword)
 		throw error(400, '現在のパスワードと異なるパスワードを設定してください。');
-	if (!(await verifyCredentials(user.username, currentPassword)))
+	if (!user.mustChangePassword && !(await verifyCredentials(user.username, currentPassword)))
 		throw error(400, '現在のパスワードが違います。');
 	const token = cookies.get(SESSION_COOKIE);
 	if (!token) throw error(401, 'ログインが必要です。');
