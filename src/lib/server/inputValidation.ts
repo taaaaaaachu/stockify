@@ -5,11 +5,13 @@ const MAX_IMPORT_CHILDREN = 100_000;
 
 export function parseNonNegativeNumber(value: unknown): number | null {
 	if (value === null || value === undefined || value === '') return null;
+	if (typeof value === 'boolean') return null;
 	const number = Number(value);
 	return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
 export function parsePositiveNumber(value: unknown): number | null {
+	if (typeof value === 'boolean') return null;
 	const number = Number(value);
 	return Number.isFinite(number) && number > 0 ? number : null;
 }

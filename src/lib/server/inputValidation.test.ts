@@ -16,6 +16,8 @@ describe('入力検証', () => {
 		expect(parseNonNegativeNumber(-1)).toBeNull();
 		expect(parsePositiveNumber(0)).toBeNull();
 		expect(parsePositiveNumber(1)).toBe(1);
+		expect(parseNonNegativeNumber(false)).toBeNull();
+		expect(parsePositiveNumber(true)).toBeNull();
 	});
 
 	it('不正な品目を含むスナップショットを拒否する', () => {
