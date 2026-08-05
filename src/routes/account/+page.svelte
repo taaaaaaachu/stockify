@@ -9,7 +9,6 @@
 
 	let { data } = $props();
 
-	let newHousehold = $state('');
 	let inviteCode = $state('');
 	let joinError = $state('');
 	let inviteExpiry = $state('');
@@ -56,23 +55,6 @@
 		if (!res.ok) { joinError = (await res.json().catch(() => ({}))).message ?? '世帯への参加に失敗しました。'; return; }
 		inviteCode = '';
 		await invalidateAll();
-	}
-
-	async function createHousehold(e: SubmitEvent) {
-		e.preventDefault();
-		if (newHousehold.trim() === '') return;
-		busy = true;
-		try {
-			await fetch('/api/households', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name: newHousehold.trim() })
-			});
-			newHousehold = '';
-			await invalidateAll();
-		} finally {
-			busy = false;
-		}
 	}
 
 	async function resetUser(user: AdminUser) {
@@ -257,18 +239,6 @@
 			</li>
 		{/each}
 	</ul>
-	{#if data.user?.instanceRole === 'super_admin'}
-	<form onsubmit={createHousehold} style="display:flex; gap:0.5rem;">
-		<input bind:value={newHousehold} placeholder="新しい世帯名(例: 実家)" style="flex:1;" />
-		<button
-			type="submit"
-			disabled={busy}
-			style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;"
-			>世帯を作成</button
-		>
-	</form>
-	<p style="font-size:0.8rem; color:var(--muted); margin:0.4rem 0 0;">super_adminが空世帯を作成します。作成者は所属せず、招待コードで最初に参加した人がownerになります。</p>
-	{/if}
 	<form onsubmit={joinHousehold} style="display:flex; gap:0.5rem; margin-top:0.7rem;">
 		<input bind:value={inviteCode} placeholder="招待コードで別の世帯に参加" style="flex:1;" />
 		<button type="submit" disabled={busy} style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;">世帯に参加</button>
