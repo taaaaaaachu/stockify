@@ -19,7 +19,7 @@
 	type HouseholdSummary = { id: string; name: string; memberCount: number; ownerCount: number; itemCount: number; createdAt: number; activeInviteCount: number };
 	type HouseholdMember = { userId: string; username: string; role: 'owner' | 'manager' | 'member' };
 	let adminUsers = $state<AdminUser[]>([]);
-	let householdMembers = $state<HouseholdMember[]>([]);
+	let householdMembers = $derived(data.members ?? []);
 	let resetResult = $state<{ username: string; password: string } | null>(null);
 	let adminError = $state('');
 	let memberError = $state('');
@@ -33,7 +33,6 @@
 	let importMsg = $state('');
 
 	onMount(async () => {
-		householdMembers = data.members ?? [];
 		try {
 			const guest = new IndexedDbRepository();
 			const snap = await guest.exportAll();
@@ -103,7 +102,23 @@
 			memberError = result.message ?? 'managerの任命に失敗しました。';
 				return;
 			}
-			member.role = 'manager';
+			await invalidateAll();
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function demoteManager(member: HouseholdMember) {
+		memberError = '';
+		busy = true;
+		try {
+			const res = await fetch(`/api/households/members/${member.userId}/demote`, { method: 'POST' });
+			const result = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				memberError = result.message ?? 'managerの解任に失敗しました。';
+				return;
+			}
+			await invalidateAll();
 		} finally {
 			busy = false;
 		}
@@ -316,6 +331,9 @@
 					<span style="color:var(--muted);">({member.role === 'owner' ? 'owner' : member.role === 'manager' ? 'manager' : 'メンバー'})</span>
 					{#if member.role === 'member'}
 						<button onclick={() => promoteMember(member)} disabled={busy} style="margin-left:auto; border:1px solid var(--accent); background:var(--card); color:var(--accent); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">managerに任命</button>
+					{/if}
+					{#if member.role === 'manager'}
+						<button onclick={() => demoteManager(member)} disabled={busy} style="margin-left:auto; border:1px solid var(--warn); background:var(--card); color:var(--warn); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">managerを解任</button>
 					{/if}
 					{#if member.role !== 'owner'}
 						<button onclick={() => requestTransfer(member)} disabled={busy} style="border:1px solid var(--warn); background:var(--card); color:var(--warn); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">owner候補に指名</button>
