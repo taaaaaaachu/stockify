@@ -3,7 +3,7 @@
 /** インスタンス全体のロール。運営者は super_admin、通常会員は user。 */
 export type InstanceRole = 'super_admin' | 'user';
 
-/** ある世帯におけるロール。owner はUI上「代表owner」と表示する。 */
+/** ある世帯におけるロール。ownerは世帯ごとに1人だけ存在する。 */
 export type HouseholdRole = 'owner' | 'manager' | 'member';
 
 /** インスタンス管理者(サーバー全体の運営者)か。 */
@@ -21,7 +21,7 @@ export function canManageMembers(householdRole: HouseholdRole | null): boolean {
 	return householdRole === 'owner';
 }
 
-/** 代表ownerの交代を開始できるか。 */
+/** ownerの交代を開始できるか。 */
 export function canTransferOwnership(householdRole: HouseholdRole | null): boolean {
 	return householdRole === 'owner';
 }

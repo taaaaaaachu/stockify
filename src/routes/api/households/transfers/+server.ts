@@ -9,7 +9,7 @@ export const GET: RequestHandler = ({ locals }) => json(listPendingOwnershipTran
 
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const { householdId, role, user } = requireHousehold(locals);
-	if (!canTransferOwnership(role)) throw error(403, '代表ownerのみ交代を申請できます。');
+	if (!canTransferOwnership(role)) throw error(403, 'ownerのみ交代を申請できます。');
 	const body = await request.json().catch(() => null);
 	const candidateUserId = typeof body?.candidateUserId === 'string' ? body.candidateUserId : '';
 	const transfer = requestOwnershipTransfer(db, householdId, user.id, candidateUserId);

@@ -170,7 +170,7 @@ describe('世帯ロール管理', () => {
 	});
 });
 
-describe('代表owner交代', () => {
+describe('owner交代', () => {
 	it('候補本人の承認でownerを交代し、旧ownerをmanagerにする', () => {
 		const first = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
 		if (!first.ok) throw new Error('setup failed');

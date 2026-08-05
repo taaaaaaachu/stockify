@@ -7,7 +7,7 @@ import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = ({ locals, params }) => {
 	const { householdId, role } = requireHousehold(locals);
-	if (!canManageMembers(role)) throw error(403, 'managerを変更できるのは代表ownerのみです。');
+	if (!canManageMembers(role)) throw error(403, 'managerを変更できるのはownerのみです。');
 	if (!demoteManager(db, householdId, params.userId)) throw error(400, '対象ユーザーはmanagerではありません。');
 	return json({ ok: true });
 };

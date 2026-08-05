@@ -6,6 +6,6 @@ import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = ({ locals }) => {
 	const { householdId, user } = requireHousehold(locals);
-	if (!leaveHousehold(db, householdId, user.id)) throw error(400, '代表ownerは後任への交代後に脱退してください。');
+	if (!leaveHousehold(db, householdId, user.id)) throw error(400, 'ownerは後任への交代後に脱退してください。');
 	return json({ ok: true });
 };

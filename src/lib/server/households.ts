@@ -102,7 +102,7 @@ export function demoteManager(db: Db, householdId: string, userId: string): bool
 	return result.changes > 0;
 }
 
-/** 代表owner以外のメンバーを除名する。 */
+/** owner以外のメンバーを除名する。 */
 export function removeHouseholdMember(db: Db, householdId: string, userId: string): boolean {
 	const result = db
 		.delete(memberships)
@@ -111,7 +111,7 @@ export function removeHouseholdMember(db: Db, householdId: string, userId: strin
 	return result.changes > 0;
 }
 
-/** manager/memberが脱退する。代表ownerと最後の所属者は脱退不可。 */
+/** manager/memberが脱退する。ownerと最後の所属者は脱退不可。 */
 export function leaveHousehold(db: Db, householdId: string, userId: string): boolean {
 	const membership = db
 		.select({ role: memberships.role })
@@ -137,7 +137,7 @@ function mapOwnershipTransfer(row: OwnershipTransferRow & { householdName: strin
 	return { ...row, householdName: row.householdName, currentOwnerName: row.currentOwnerName, candidateUserName: row.candidateUserName };
 }
 
-/** 代表ownerが交代候補を指名する。 */
+/** ownerが交代候補を指名する。 */
 export function requestOwnershipTransfer(db: Db, householdId: string, currentOwnerId: string, candidateUserId: string): OwnershipTransfer | null {
 	const candidate = db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.householdId, householdId), eq(memberships.userId, candidateUserId))).get();
 	if (!candidate || (candidate.role !== 'member' && candidate.role !== 'manager')) return null;
@@ -443,7 +443,7 @@ export function registerUser(
 			}
 
 			if (params.requireInvite && invite) {
-				// 招待経由 → 空世帯なら最初の代表owner、それ以外はmemberとして所属。
+				// 招待経由 → 空世帯なら最初のowner、それ以外はmemberとして所属。
 				const existingMembership = tx
 					.select({ id: memberships.id })
 					.from(memberships)

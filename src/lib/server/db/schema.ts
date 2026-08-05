@@ -59,7 +59,7 @@ export const memberships = sqliteTable(
 	]
 );
 
-/** 代表owner交代の保留申請。世帯ごとに保留は1件だけ。 */
+/** owner交代の保留申請。世帯ごとに保留は1件だけ。 */
 export const ownershipTransfers = sqliteTable(
 	'ownership_transfers',
 	{

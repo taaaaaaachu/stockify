@@ -111,8 +111,8 @@
 
 	async function requestTransfer(member: HouseholdMember) {
 		const res = await fetch('/api/households/transfers', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ candidateUserId: member.userId }) });
-		if (!res.ok) memberError = (await res.json().catch(() => ({}))).message ?? '代表owner交代の申請に失敗しました。';
-		else memberError = `${member.username}さんへ代表owner交代の申請を送りました。`;
+		if (!res.ok) memberError = (await res.json().catch(() => ({}))).message ?? 'owner交代の申請に失敗しました。';
+		else memberError = `${member.username}さんへowner交代の申請を送りました。`;
 	}
 
 	async function createInvite(e: SubmitEvent) {
@@ -219,7 +219,7 @@
 		{#each store.households as h (h.id)}
 			<li style="display:flex; gap:0.5rem; align-items:center; font-size:0.9rem;">
 				<span>{h.name}</span>
-				<span style="color:var(--muted);">({h.role === 'owner' ? '代表owner' : h.role === 'manager' ? 'manager' : 'メンバー'})</span>
+				<span style="color:var(--muted);">({h.role === 'owner' ? 'owner' : h.role === 'manager' ? 'manager' : 'メンバー'})</span>
 				{#if store.activeHousehold?.id === h.id}
 					<span style="color:var(--accent); font-size:0.75rem;">選択中</span>
 				{/if}
@@ -236,7 +236,7 @@
 			>世帯を作成</button
 		>
 	</form>
-	<p style="font-size:0.8rem; color:var(--muted); margin:0.4rem 0 0;">super_adminが空世帯を作成します。作成者は所属せず、招待コードで最初に参加した人が代表ownerになります。</p>
+	<p style="font-size:0.8rem; color:var(--muted); margin:0.4rem 0 0;">super_adminが空世帯を作成します。作成者は所属せず、招待コードで最初に参加した人がownerになります。</p>
 	{/if}
 	<form onsubmit={joinHousehold} style="display:flex; gap:0.5rem; margin-top:0.7rem;">
 		<input bind:value={inviteCode} placeholder="招待コードで別の世帯に参加" style="flex:1;" />
@@ -313,12 +313,12 @@
 			{#each householdMembers as member (member.userId)}
 				<li style="display:flex; gap:0.5rem; align-items:center;">
 					<span>{member.username}</span>
-					<span style="color:var(--muted);">({member.role === 'owner' ? '代表owner' : member.role === 'manager' ? 'manager' : 'メンバー'})</span>
+					<span style="color:var(--muted);">({member.role === 'owner' ? 'owner' : member.role === 'manager' ? 'manager' : 'メンバー'})</span>
 					{#if member.role === 'member'}
 						<button onclick={() => promoteMember(member)} disabled={busy} style="margin-left:auto; border:1px solid var(--accent); background:var(--card); color:var(--accent); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">managerに任命</button>
 					{/if}
 					{#if member.role !== 'owner'}
-						<button onclick={() => requestTransfer(member)} disabled={busy} style="border:1px solid var(--warn); background:var(--card); color:var(--warn); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">代表owner候補に指名</button>
+						<button onclick={() => requestTransfer(member)} disabled={busy} style="border:1px solid var(--warn); background:var(--card); color:var(--warn); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">owner候補に指名</button>
 					{/if}
 				</li>
 			{/each}
@@ -329,10 +329,10 @@
 
 {#if data.pendingTransfers.length > 0}
 	<div style={section}>
-		<h2 style="margin:0 0 0.5rem; font-size:1rem;">代表owner交代の申請</h2>
+		<h2 style="margin:0 0 0.5rem; font-size:1rem;">owner交代の申請</h2>
 		{#each data.pendingTransfers as transfer (transfer.id)}
 			<div style="display:flex; gap:0.5rem; align-items:center;">
-				<span>世帯「{transfer.householdName}」の代表ownerになる申請です。</span>
+				<span>世帯「{transfer.householdName}」のownerになる申請です。</span>
 				<button onclick={() => acceptTransfer(transfer.id, true)} disabled={busy}>承認</button>
 				<button onclick={() => acceptTransfer(transfer.id, false)} disabled={busy}>拒否</button>
 			</div>
