@@ -26,11 +26,11 @@ push/PR ──▶ GitHub Actions (lint / check / test)
 | ファイル | 役割 |
 | --- | --- |
 | `.github/workflows/ci.yml` | CI(lint/check/test)+ main のイメージを GHCR に配布 |
-| `docker-compose.yml` | NAS 本番。`app`(GHCR pull)+ `cloudflared` + `notify-cron`。Watchtower は含まない |
+| `docker-compose.yml` | NAS 本番。`app`(GHCR pull)+ `notify-cron`。共用ネットワークに参加し、Cloudflare Tunnel は含まない |
 | `docker-compose.local.yml` | ローカル動作確認用(こちらは従来どおり `build:`) |
 | `Dockerfile` / `docker-entrypoint.sh` | イメージ定義と起動時マイグレーション |
 
-Watchtower は本リポジトリ外の**独立した Container Manager プロジェクト**(NAS 上
+Cloudflare Tunnel と Watchtower は本リポジトリ外の**独立した Container Manager プロジェクト**(NAS 上
 `/volume1/docker/watchtower`)として1台だけ動かす。compose 定義は後述の
 「Watchtower(独立プロジェクト)」を正典とする。
 
@@ -79,16 +79,39 @@ GHCR パッケージは既定で private。Watchtower が pull できるよう�
 PAT の発行・上記ログイン・compose の `config.json` マウント行はすべて不要になる
 (イメージには秘密が焼き込まれていない = `ORIGIN`/`VAPID_*`/`CRON_SECRET` は実行時注入のため)。
 
-### 3. NAS で本番を起動
+### 3. NAS で共用ネットワークと Cloudflare Tunnel を起動
 
-1. `.env` を用意(`.env.example` 参照。`VAPID_*` / `CRON_SECRET` / `TUNNEL_TOKEN` / `ORIGIN`)。
-2. 新しい `docker-compose.yml` を配置して起動:
+1. 初回だけ共用ネットワークを作成する:
 
    ```bash
-   docker compose up -d
+   sudo docker network create cloudflare-proxy
+   ```
+
+2. 親フォルダの `cloudFlarred/docker-compose.yml` を NAS の独立プロジェクト
+   `/volume1/docker/cloudflared/docker-compose.yml` に配置し、`.env` に共用 Tunnel の
+   `TUNNEL_TOKEN` を設定して起動する:
+
+   ```bash
+   cd /volume1/docker/cloudflared
+   sudo docker compose up -d
+   ```
+
+   Cloudflare Zero Trust の Public Hostname は次のように設定する(既存の各 Tunnel 設定を
+   1 つの共用 Tunnel に集約する):
+
+   - `stock.example.com` → `http://stockify-app:3000`
+   - `lowest.example.com` → `http://lowest-finder-app:3000`
+
+3. `.env` を各アプリに用意(`.env.example` 参照。`TUNNEL_TOKEN` は不要、`ORIGIN` /
+   `VAPID_*` / `CRON_SECRET` を設定)。
+4. 新しい `docker-compose.yml` を各アプリに配置して起動:
+
+   ```bash
+  sudo docker compose up -d
    ```
 
 以後 NAS でのビルドは不要。`main` に変更が入るたび、5 分以内に Watchtower が自動反映する。
+アプリを再作成しても `cloudflare-proxy` ネットワークと共用 Tunnel は維持される。
 
 ### 4. Watchtower(独立プロジェクト・NAS 全体で 1 台だけ)
 
@@ -122,6 +145,9 @@ services:
 - Watchtower は**このプロジェクト自身も含む**すべてのラベル付きコンテナを見るが、enable ラベルを
   付けなければ対象外。cloudflared / notify-cron は対象外のまま。
 - **単一障害点**である点に注意: この Watchtower を止めると全プロジェクトの自動更新が止まる。
+
+Cloudflare Tunnel も同様に NAS 全体で 1 コンテナだけを起動する。アプリ側 compose に
+`cloudflared` を追加したり、アプリごとに `TUNNEL_TOKEN` を設定したりしない。
 
 ## 日常運用
 

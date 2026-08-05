@@ -13,7 +13,7 @@
 ```
                  ┌─────────────────────── NAS / Container Manager ────────────┐
  インターネット   │                                                            │
-   ─────────►  cloudflared ──http──►  app (SvelteKit adapter-node :3000)       │
+   ─────────►  共用 cloudflared ──http──►  app (SvelteKit adapter-node :3000)       │
  (HTTPS/Tunnel)  │                         │                                   │
                  │                         └── data/app.sqlite (バインドマウント) │
                  │                                                            │
@@ -59,14 +59,16 @@ npx web-push generate-vapid-keys
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### 3.3 Cloudflare Tunnel トークンを取得(ブラウザ)
+### 3.3 共用 Cloudflare Tunnel を設定(ブラウザ)
 
 1. Cloudflare **Zero Trust** ダッシュボード → **Networks → Tunnels → Create a tunnel**。
 2. コネクタは **Cloudflared** を選択し、トンネル名を付けて作成。
-3. 表示される **トークン**(`eyJ...` の長い文字列)を控える。
+3. 表示される **トークン**(`eyJ...` の長い文字列)を控え、NAS の
+   `/volume1/docker/cloudflared/.env` に `TUNNEL_TOKEN=...` として保存する。
 4. **Public Hostname** を追加:
    - Subdomain: `stock`、Domain: `example.com`
-   - Service: **HTTP** → `app:3000`
+   - Service: **HTTP** → `stockify-app:3000`
+   - `lowest_finder` も共用する場合は `lowest` → `lowest-finder-app:3000` も追加する。
 
 ### 3.4 本番用 `.env` を作成(Windows のプロジェクトフォルダ直下)
 
@@ -78,7 +80,6 @@ VAPID_PUBLIC_KEY=＜3.1 の Public Key＞
 VAPID_PRIVATE_KEY=＜3.1 の Private Key＞
 VAPID_SUBJECT=mailto:you@example.com
 CRON_SECRET=＜3.2 の値＞
-TUNNEL_TOKEN=＜3.3 のトークン＞
 ```
 
 > `ORIGIN` は必ず公開 URL に一致させます。ズレるとログイン等の POST が CSRF で 403 になります。
@@ -121,7 +122,8 @@ Compress-Archive -Path $items -DestinationPath ..\stockify-deploy.zip -Force
 4. **ソース**: 「既存の docker-compose.yml を使用」を選ぶ(フォルダ内の
    `docker-compose.yml` が自動で読まれる)。
 5. そのまま進めて **ビルドして起動**。初回はイメージのビルドに数分かかります。
-6. ビルド後、3 コンテナ(`app` / `cloudflared` / `notify-cron`)が起動します。
+6. ビルド後、アプリ側の 2 コンテナ(`app` / `notify-cron`)が起動します。`cloudflared` は
+   NAS 全体で 1 つの共用プロジェクトとして起動します。
    - `app` は起動時に DB マイグレーションを自動適用します。
    - ログは Container Manager の各コンテナ「詳細 → ログ」で確認できます(**SSH 不要**)。
 
@@ -200,7 +202,7 @@ SQLite はプロジェクト直下 `data/app.sqlite` にあります。
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push 鍵 | 通知を使うなら必須 |
 | `VAPID_SUBJECT` | VAPID の連絡先(`mailto:` 等) | 任意 |
 | `CRON_SECRET` | 通知cronの共有シークレット | 通知を使うなら必須 |
-| `TUNNEL_TOKEN` | Cloudflare Tunnel トークン | 本番で必須 |
+| `TUNNEL_TOKEN` | 共用 Cloudflare Tunnel プロジェクトのトークン | `/volume1/docker/cloudflared/.env` で設定 |
 
 ## 付録 B: Windows でのローカル確認(任意・Docker Desktop がある場合)
 

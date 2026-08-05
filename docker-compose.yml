@@ -31,17 +31,11 @@ services:
     # 既定では外部ポートを公開せず、cloudflared 経由でのみ到達させる。
     expose:
       - "3000"
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    # Cloudflare Zero Trust ダッシュボードで発行した Tunnel トークンを .env に置く。
-    # Public Hostname のサービスは http://app:3000 に向ける。
-    command: tunnel --no-autoupdate run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    depends_on:
-      - app
+    networks:
+      default:
+      proxy:
+        aliases:
+          - stockify-app
 
   # 通知評価cron: 15分ごとに app の通知エンドポイントを叩く。
   # 実際に送るかは app 側で各ユーザーの設定時刻スロットに該当するかで判断する。
@@ -60,6 +54,13 @@ services:
         apk add --no-cache curl >/dev/null
         printf '*/15 * * * * curl -s -X POST -H "Authorization: Bearer %s" http://app:3000/api/cron/notify >/dev/null 2>&1\n' "$$CRON_SECRET" > /etc/crontabs/root
         exec crond -f -l 8
+
+networks:
+  # cloudflared は NAS 上の共用 compose から同じネットワークに参加する。
+  # 初回だけ `docker network create cloudflare-proxy` を実行する。
+  proxy:
+    name: cloudflare-proxy
+    external: true
 
 # ※ イメージ自動更新の Watchtower は、この stockify プロジェクトには含めない。
 #    NAS 全体で 1 台だけ独立プロジェクト(/volume1/docker/watchtower)として動かし、
