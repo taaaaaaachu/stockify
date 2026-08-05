@@ -211,6 +211,8 @@
 				body: JSON.stringify(snap)
 			});
 			const json = await res.json();
+			if (!res.ok) throw new Error(json.message ?? 'ゲストデータの取り込みに失敗しました。');
+			await guest.clearAll();
 			importMsg = `${json.items} 件の品目を取り込みました。`;
 			guestItemCount = 0;
 			await store.load();

@@ -140,4 +140,12 @@ describe('IndexedDbRepository', () => {
 		expect(snap.purchases.length).toBe(1);
 		expect(snap.settings.defaultLeadTimeDays).toBe(7);
 	});
+
+	it('clearAll は取り込み後のゲストデータを消去する', async () => {
+		const repo = new IndexedDbRepository();
+		await repo.createItem(itemInput());
+		expect((await repo.exportAll()).items).toHaveLength(1);
+		await repo.clearAll();
+		expect((await repo.exportAll()).items).toHaveLength(0);
+	});
 });
