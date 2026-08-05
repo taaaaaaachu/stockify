@@ -373,7 +373,7 @@
 		<p style="font-size:0.85rem; color:var(--muted);">所属していない世帯もメタデータだけ確認できます。削除は在庫・所属ユーザーを含めて復元できません。</p>
 		<form onsubmit={createAdminHousehold} style="display:flex; gap:0.5rem; margin-bottom:0.7rem;">
 			<input bind:value={adminHouseholdName} placeholder="世帯名" style="flex:1;" />
-			<button type="submit" disabled={busy} style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;">空世帯を作成</button>
+			<button type="submit" disabled={busy} style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;">世帯を作成</button>
 		</form>
 		{#each adminHouseholds as household (household.id)}
 			<div style="display:flex; gap:0.5rem; align-items:center; font-size:0.85rem; border-top:1px solid var(--border); padding:0.4rem 0;">
