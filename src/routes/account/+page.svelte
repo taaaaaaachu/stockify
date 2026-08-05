@@ -268,7 +268,7 @@
 		<h2 style="margin:0 0 0.5rem; font-size:1rem;">ゲストデータの取り込み</h2>
 		<p style="font-size:0.9rem; color:var(--muted); margin:0 0 0.5rem;">
 			この端末のゲスト(ローカル)に {guestItemCount} 件の品目があります。現在の世帯「{store
-				.activeHousehold.name}」へ取り込めます(追記)。
+				.activeHousehold.name}」へ取り込めます。
 		</p>
 		<button
 			onclick={importGuest}
