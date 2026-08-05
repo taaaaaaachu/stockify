@@ -14,9 +14,12 @@
 	let lastCode = $state<string | null>(null);
 	let busy = $state(false);
 	type AdminUser = { id: string; username: string };
+	type HouseholdMember = { userId: string; username: string; role: 'owner' | 'member' };
 	let adminUsers = $state<AdminUser[]>([]);
+	let householdMembers = $state<HouseholdMember[]>([]);
 	let resetResult = $state<{ username: string; password: string } | null>(null);
 	let adminError = $state('');
+	let memberError = $state('');
 
 	// ゲスト(IndexedDB)に残っているローカルデータの件数(取り込み導線用)。
 	let guestItemCount = $state(0);
@@ -33,6 +36,10 @@
 		if (data.user?.instanceRole === 'super_admin') {
 			const res = await fetch('/api/admin/users');
 			if (res.ok) adminUsers = await res.json();
+		}
+		if (data.canManage) {
+			const res = await fetch('/api/households/members');
+			if (res.ok) householdMembers = await res.json();
 		}
 	});
 
@@ -65,6 +72,22 @@
 				return;
 			}
 			resetResult = { username: user.username, password: result.temporaryPassword };
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function promoteMember(member: HouseholdMember) {
+		memberError = '';
+		busy = true;
+		try {
+			const res = await fetch(`/api/households/members/${member.userId}/promote`, { method: 'POST' });
+			const result = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				memberError = result.message ?? 'ownerへの昇格に失敗しました。';
+				return;
+			}
+			member.role = 'owner';
 		} finally {
 			busy = false;
 		}
@@ -151,17 +174,15 @@
 			</li>
 		{/each}
 	</ul>
-	{#if data.user?.instanceRole === 'super_admin'}
-		<form onsubmit={createHousehold} style="display:flex; gap:0.5rem;">
-			<input bind:value={newHousehold} placeholder="新しい世帯名(例: 実家)" style="flex:1;" />
-			<button
-				type="submit"
-				disabled={busy}
-				style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;"
-				>世帯を作成</button
-			>
-		</form>
-	{/if}
+	<form onsubmit={createHousehold} style="display:flex; gap:0.5rem;">
+		<input bind:value={newHousehold} placeholder="新しい世帯名(例: 実家)" style="flex:1;" />
+		<button
+			type="submit"
+			disabled={busy}
+			style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;"
+			>世帯を作成</button
+		>
+	</form>
 </div>
 
 {#if guestItemCount > 0 && store.activeHousehold}
@@ -221,7 +242,25 @@
 					</li>
 				{/each}
 			</ul>
-		{/if}
+	{/if}
+	</div>
+{/if}
+
+{#if data.canManage}
+	<div style={section}>
+		<h2 style="margin:0 0 0.5rem; font-size:1rem;">世帯メンバー</h2>
+		<ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.4rem;">
+			{#each householdMembers as member (member.userId)}
+				<li style="display:flex; gap:0.5rem; align-items:center;">
+					<span>{member.username}</span>
+					<span style="color:var(--muted);">({member.role === 'owner' ? 'オーナー' : 'メンバー'})</span>
+					{#if member.role === 'member'}
+						<button onclick={() => promoteMember(member)} disabled={busy} style="margin-left:auto; border:1px solid var(--accent); background:var(--card); color:var(--accent); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">オーナーに昇格</button>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+		{#if memberError}<p style="color:var(--danger);">{memberError}</p>{/if}
 	</div>
 {/if}
 

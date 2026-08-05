@@ -55,6 +55,39 @@ export function getMembership(db: Db, userId: string, householdId: string): Hous
 	return row?.role ?? null;
 }
 
+export interface HouseholdMember {
+	userId: string;
+	username: string;
+	role: HouseholdRole;
+}
+
+/** 世帯のメンバー一覧を返す。 */
+export function listHouseholdMembers(db: Db, householdId: string): HouseholdMember[] {
+	return db
+		.select({ userId: users.id, username: users.username, role: memberships.role })
+		.from(memberships)
+		.innerJoin(users, eq(memberships.userId, users.id))
+		.where(eq(memberships.householdId, householdId))
+		.orderBy(users.username)
+		.all();
+}
+
+/** 世帯のmemberをownerへ昇格する。既にownerまたは非所属ならfalse。 */
+export function promoteMemberToOwner(db: Db, householdId: string, userId: string): boolean {
+	const result = db
+		.update(memberships)
+		.set({ role: 'owner' })
+		.where(
+			and(
+				eq(memberships.householdId, householdId),
+				eq(memberships.userId, userId),
+				eq(memberships.role, 'member')
+			)
+		)
+		.run();
+	return result.changes > 0;
+}
+
 export interface UserHousehold {
 	id: string;
 	name: string;
