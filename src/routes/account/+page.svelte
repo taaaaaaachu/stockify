@@ -25,6 +25,7 @@
 	let deleteUsername = $state('');
 	let deletePassword = $state('');
 	let deleteError = $state('');
+	let showDeleteAccount = $state(false);
 	let memberError = $state('');
 	let adminHouseholds = $state<HouseholdSummary[]>([]);
 	let adminHouseholdName = $state('');
@@ -275,17 +276,6 @@
 <PasswordChangeForm />
 
 <div style={section}>
-	<h2 style="margin:0 0 0.5rem; font-size:1rem;">アカウントの削除</h2>
-	<p style="font-size:0.85rem; color:var(--muted);">この操作は取り消せません。ownerになっている世帯がある場合は、先にownerを委任してください。</p>
-	<form onsubmit={deleteAccount} style="display:flex; flex-direction:column; gap:0.5rem; max-width:24rem;">
-		<input bind:value={deleteUsername} placeholder="ユーザー名" autocomplete="username" required />
-		<input bind:value={deletePassword} type="password" placeholder="現在のパスワード" autocomplete="current-password" required />
-		<button type="submit" disabled={busy} style="border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.4rem 0.8rem; cursor:pointer;">アカウントを削除</button>
-	</form>
-	{#if deleteError}<p style="color:var(--danger);">{deleteError}</p>{/if}
-</div>
-
-<div style={section}>
 	<h2 style="margin:0 0 0.5rem; font-size:1rem;">所属している世帯</h2>
 	<ul style="list-style:none; padding:0; margin:0 0 0.7rem;">
 		{#each store.households as h (h.id)}
@@ -450,5 +440,27 @@
 			<p style="color:var(--warn);">ユーザー <b>{resetResult.username}</b> の一時パスワード（この画面でのみ表示）:</p>
 			<code style="display:block; user-select:all; padding:0.5rem; background:var(--bg);">{resetResult.password}</code>
 		{/if}
+	</div>
+{/if}
+
+<div style={`${section} margin-top:2rem;`}>
+	<button type="button" onclick={() => { showDeleteAccount = true; deleteError = ''; }} style="border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.4rem 0.8rem; cursor:pointer;">アカウントを削除</button>
+</div>
+
+{#if showDeleteAccount}
+	<div role="presentation" onclick={(event) => { if (event.target === event.currentTarget) showDeleteAccount = false; }} style="position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; padding:1rem; background:rgba(0,0,0,0.45);">
+		<div role="dialog" aria-modal="true" aria-labelledby="delete-account-title" style="width:min(100%, 28rem); background:var(--card); border:1px solid var(--border); border-radius:0.6rem; padding:1rem; box-shadow:0 0.75rem 2rem rgba(0,0,0,0.2);">
+			<h2 id="delete-account-title" style="margin:0 0 0.5rem; font-size:1rem;">アカウントの削除</h2>
+			<p style="font-size:0.85rem; color:var(--muted);">この操作は取り消せません。ownerになっている世帯がある場合は、先にownerを委任してください。</p>
+			<form onsubmit={deleteAccount} style="display:flex; flex-direction:column; gap:0.5rem;">
+				<input bind:value={deleteUsername} placeholder="ユーザー名" autocomplete="username" required />
+				<input bind:value={deletePassword} type="password" placeholder="現在のパスワード" autocomplete="current-password" required />
+				<div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+					<button type="button" onclick={() => { showDeleteAccount = false; deleteError = ''; }}>キャンセル</button>
+					<button type="submit" disabled={busy} style="border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.4rem 0.8rem; cursor:pointer;">削除する</button>
+				</div>
+			</form>
+			{#if deleteError}<p style="color:var(--danger);">{deleteError}</p>{/if}
+		</div>
 	</div>
 {/if}
