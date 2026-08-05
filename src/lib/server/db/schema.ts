@@ -29,6 +29,20 @@ export const sessions = sqliteTable('sessions', {
 	expiresAt: integer('expires_at').notNull()
 });
 
+/** パスワード検証の一時的な試行制限。値そのものは保存せず、目的別ハッシュを id に使う。 */
+export const authAttempts = sqliteTable(
+	'auth_attempts',
+	{
+		id: text('id').primaryKey(),
+		scope: text('scope').notNull().$type<'user' | 'ip'>(),
+		failedCount: integer('failed_count').notNull(),
+		windowStartedAt: integer('window_started_at').notNull(),
+		blockedUntil: integer('blocked_until'),
+		updatedAt: integer('updated_at').notNull()
+	},
+	(t) => [index('auth_attempts_scope_updated_idx').on(t.scope, t.updatedAt)]
+);
+
 /** 世帯。在庫データを共有する単位(ADR 0003)。 */
 export const households = sqliteTable('households', {
 	id: text('id').primaryKey(),
@@ -203,6 +217,7 @@ export const pushSubscriptions = sqliteTable(
 export type UserRow = typeof users.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
+export type AuthAttemptRow = typeof authAttempts.$inferSelect;
 export type HouseholdRow = typeof households.$inferSelect;
 export type MembershipRow = typeof memberships.$inferSelect;
 export type OwnershipTransferRow = typeof ownershipTransfers.$inferSelect;

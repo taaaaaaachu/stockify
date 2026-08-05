@@ -36,6 +36,13 @@
       "when": 1785971000000,
       "tag": "0004_household_roles_and_transfers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785972000000,
+      "tag": "0005_auth_attempts",
+      "breakpoints": true
     }
   ]
 }

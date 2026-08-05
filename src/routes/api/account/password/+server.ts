@@ -8,8 +8,9 @@ import {
 	verifyCredentials
 } from '$lib/server/auth';
 import type { RequestHandler } from './$types';
+import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '$lib/server/authRateLimit';
 
-export const POST: RequestHandler = async ({ locals, cookies, request }) => {
+export const POST: RequestHandler = async ({ locals, cookies, request, getClientAddress }) => {
 	const user = requireUser(locals);
 	const body = await request.json().catch(() => null);
 	const currentPassword = typeof body?.currentPassword === 'string' ? body.currentPassword : '';
@@ -23,8 +24,15 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 		throw error(400, '新しいパスワードと確認用パスワードが一致しません。');
 	if (!user.mustChangePassword && currentPassword === newPassword)
 		throw error(400, '現在のパスワードと異なるパスワードを設定してください。');
-	if (!user.mustChangePassword && !(await verifyCredentials(user.username, currentPassword)))
-		throw error(400, '現在のパスワードが違います。');
+	if (!user.mustChangePassword) {
+		const ip = getClientAddress();
+		if (isAuthRateLimited(user.username, ip)) throw error(400, '現在のパスワードが違います。');
+		if (!(await verifyCredentials(user.username, currentPassword))) {
+			recordAuthFailure(user.username, ip);
+			throw error(400, '現在のパスワードが違います。');
+		}
+		resetUserAuthRateLimit(user.username);
+	}
 	const token = cookies.get(SESSION_COOKIE);
 	if (!token) throw error(401, 'ログインが必要です。');
 	changePassword(user.id, await hashPassword(newPassword), token);

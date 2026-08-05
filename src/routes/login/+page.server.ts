@@ -4,6 +4,7 @@ import { setSessionCookie, setHouseholdCookie } from '$lib/server/sessionCookie'
 import { db } from '$lib/server/db';
 import { listUserHouseholds } from '$lib/server/households';
 import type { Actions, PageServerLoad } from './$types';
+import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '$lib/server/authRateLimit';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) throw redirect(303, '/');
@@ -11,15 +12,20 @@ export const load: PageServerLoad = ({ locals, url }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ request, cookies }) => {
+	default: async ({ request, cookies, getClientAddress }) => {
 		const data = await request.formData();
 		const username = String(data.get('username') ?? '');
 		const password = String(data.get('password') ?? '');
 
+		const ip = getClientAddress();
+		if (isAuthRateLimited(username, ip))
+			return fail(401, { username, error: 'ユーザー名またはパスワードが違います。' });
 		const user = await verifyCredentials(username, password);
 		if (!user) {
+			recordAuthFailure(username, ip);
 			return fail(401, { username, error: 'ユーザー名またはパスワードが違います。' });
 		}
+		resetUserAuthRateLimit(user.username);
 
 		const { token, expiresAt } = createSession(user.id);
 		setSessionCookie(cookies, token, expiresAt);

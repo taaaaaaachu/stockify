@@ -1,6 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 import { generateTemporaryPassword, hashPassword, resetPassword } from '$lib/server/auth';
 import type { RequestHandler } from './$types';
+import { db } from '$lib/server/db';
+import { resetUserAuthRateLimitById } from '$lib/server/authRateLimit';
 
 export const POST: RequestHandler = async ({ locals, params }) => {
 	if (!locals.user) throw error(401, 'ログインが必要です。');
@@ -9,5 +11,6 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 	const temporaryPassword = generateTemporaryPassword();
 	const updated = resetPassword(params.id, await hashPassword(temporaryPassword));
 	if (!updated) throw error(404, 'ユーザーが見つかりません。');
+	resetUserAuthRateLimitById(params.id, db);
 	return json({ temporaryPassword });
 };
