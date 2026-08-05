@@ -86,6 +86,31 @@
 		pPrice = '';
 	}
 
+	// --- 購入編集 ---
+	let editingPurchaseId = $state<string | null>(null);
+	let ePurchaseVolume = $state('');
+	let ePurchaseDate = $state('');
+	let ePurchasePrice = $state('');
+	function startEditPurchase(p: (typeof purchasesDesc)[number]) {
+		editingPurchaseId = p.id;
+		ePurchaseVolume = String(p.volume);
+		ePurchaseDate = localDateInput(new Date(p.purchasedAt));
+		ePurchasePrice = p.price === null ? '' : String(p.price);
+	}
+	async function savePurchaseEdit(e: SubmitEvent) {
+		e.preventDefault();
+		if (!editingPurchaseId) return;
+		const volume = numOrNull(ePurchaseVolume);
+		const price = numOrNull(ePurchasePrice);
+		if (volume === null || volume <= 0 || !ePurchaseDate) return;
+		await store.editPurchase(editingPurchaseId, {
+			volume,
+			price,
+			purchasedAt: dateInputToTimestamp(ePurchaseDate)
+		});
+		editingPurchaseId = null;
+	}
+
 	// --- 残量補正 ---
 	let adjRemaining = $state('');
 	async function addAdjustment(e: SubmitEvent) {
@@ -379,11 +404,27 @@
 							<span style="font-size:0.7rem; color:var(--accent);">定期便</span>
 						{/if}
 						<button
+							onclick={() => startEditPurchase(p)}
+							style="margin-left:auto; border:none; background:none; color:var(--accent); cursor:pointer;"
+							aria-label="編集">編集</button
+						>
+						<button
 							onclick={() => store.removePurchase(p.id)}
-							style="margin-left:auto; border:none; background:none; color:var(--danger); cursor:pointer;"
+							style="border:none; background:none; color:var(--danger); cursor:pointer;"
 							aria-label="削除">✕</button
 						>
 					</li>
+					{#if editingPurchaseId === p.id}
+						<li style="display:flex; font-size:0.9rem;">
+							<form onsubmit={savePurchaseEdit} style="display:flex; gap:0.4rem; align-items:end; flex-wrap:wrap; width:100%;">
+								<label style={inputRow}><span style="font-size:0.75rem;">購入日</span><input bind:value={ePurchaseDate} type="date" required /></label>
+								<label style={inputRow}><span style="font-size:0.75rem;">内容量</span><input bind:value={ePurchaseVolume} type="number" min="0" step="any" required /></label>
+								<label style={inputRow}><span style="font-size:0.75rem;">価格</span><input bind:value={ePurchasePrice} type="number" min="0" step="any" /></label>
+								<button type="submit" style="background:var(--accent); color:#fff; border:none; border-radius:0.4rem; padding:0.35rem 0.6rem; cursor:pointer;">保存</button>
+								<button type="button" onclick={() => (editingPurchaseId = null)} style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.35rem 0.6rem; cursor:pointer;">やめる</button>
+							</form>
+						</li>
+					{/if}
 				{/each}
 			</ul>
 		{/if}

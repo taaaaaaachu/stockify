@@ -3,6 +3,7 @@ import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
 import { requireHousehold } from '$lib/server/apiGuard';
 import { parsePositiveNumber } from '$lib/server/inputValidation';
+import { isAcceptableNextDelivery } from '$lib/domain/subscription';
 import type { RequestHandler } from './$types';
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -21,9 +22,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 			patch[key] = n;
 		}
 	}
-	if (body?.nextDeliveryAt !== undefined && !Number.isFinite(Number(body.nextDeliveryAt)))
-		throw error(400, 'nextDeliveryAt が不正です。');
-	if (body?.paused !== undefined) patch.paused = Boolean(body.paused);
+	if (body?.nextDeliveryAt !== undefined && !isAcceptableNextDelivery(Number(body.nextDeliveryAt), Date.now()))
+		throw error(400, '次回予定日は今日以降で指定してください。');
+	if (body?.paused !== undefined) {
+		if (typeof body.paused !== 'boolean') throw error(400, 'paused が不正です。');
+		patch.paused = body.paused;
+	}
 
 	const sub = stock.updateSubscription(db, householdId, params.id, patch);
 	if (!sub) throw error(404, '定期便が見つかりません。');

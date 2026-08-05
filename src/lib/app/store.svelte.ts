@@ -131,6 +131,13 @@ class Store {
 		await this.repo.createPurchase(input);
 		await this.reload();
 	}
+	async editPurchase(
+		id: string,
+		patch: Partial<Omit<import('$lib/types').Purchase, 'id' | 'itemId'>>
+	): Promise<void> {
+		await this.repo.updatePurchase(id, patch);
+		await this.reload();
+	}
 	async removePurchase(id: string): Promise<void> {
 		await this.repo.deletePurchase(id);
 		await this.reload();
