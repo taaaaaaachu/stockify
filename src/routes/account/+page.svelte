@@ -151,15 +151,17 @@
 			</li>
 		{/each}
 	</ul>
-	<form onsubmit={createHousehold} style="display:flex; gap:0.5rem;">
-		<input bind:value={newHousehold} placeholder="新しい世帯名(例: 実家)" style="flex:1;" />
-		<button
-			type="submit"
-			disabled={busy}
-			style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;"
-			>世帯を作成</button
-		>
-	</form>
+	{#if data.user?.instanceRole === 'super_admin'}
+		<form onsubmit={createHousehold} style="display:flex; gap:0.5rem;">
+			<input bind:value={newHousehold} placeholder="新しい世帯名(例: 実家)" style="flex:1;" />
+			<button
+				type="submit"
+				disabled={busy}
+				style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;"
+				>世帯を作成</button
+			>
+		</form>
+	{/if}
 </div>
 
 {#if guestItemCount > 0 && store.activeHousehold}
