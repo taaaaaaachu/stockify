@@ -18,6 +18,7 @@ export interface AuthUser {
 	username: string;
 	instanceRole: InstanceRole;
 	notifyMinuteOfDay: number;
+	mustChangePassword: boolean;
 }
 export interface HouseholdSummary {
 	id: string;

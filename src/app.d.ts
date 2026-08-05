@@ -10,6 +10,7 @@ declare global {
 				username: string;
 				instanceRole: InstanceRole;
 				notifyMinuteOfDay: number;
+				mustChangePassword: boolean;
 			} | null;
 			/** ログイン中ユーザーが所属する世帯の一覧。 */
 			households: { id: string; name: string; role: HouseholdRole; defaultLeadTimeDays: number }[];

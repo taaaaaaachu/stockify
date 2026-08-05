@@ -26,6 +26,6 @@ export const actions: Actions = {
 		// 先頭の世帯をアクティブにしておく。
 		const households = listUserHouseholds(db, user.id);
 		if (households[0]) setHouseholdCookie(cookies, households[0].id);
-		throw redirect(303, '/');
+		throw redirect(303, user.mustChangePassword ? '/account?password=required' : '/');
 	}
 };

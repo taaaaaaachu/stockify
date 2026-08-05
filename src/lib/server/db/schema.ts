@@ -8,6 +8,8 @@ export const users = sqliteTable('users', {
 	id: text('id').primaryKey(),
 	username: text('username').notNull().unique(),
 	passwordHash: text('password_hash').notNull(),
+	/** 管理者リセット後、次回ログインでのパスワード変更を要求する。 */
+	mustChangePassword: integer('must_change_password', { mode: 'boolean' }).notNull().default(false),
 	/** インスタンス全体のロール。ブートストラップした最初の1人が super_admin。 */
 	instanceRole: text('instance_role').notNull().$type<InstanceRole>().default('user'),
 	/**

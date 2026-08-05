@@ -1,8 +1,9 @@
 import { hash, verify } from '@node-rs/argon2';
 import { randomBytes, createHash } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { db } from './db';
 import { users, sessions, type UserRow } from './db/schema';
+import type { Db } from './db';
 
 export const SESSION_COOKIE = 'session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30日
@@ -35,6 +36,50 @@ export function hashPassword(password: string): Promise<string> {
 	return hash(password, ARGON2_OPTS);
 }
 
+export interface AdminUser {
+	id: string;
+	username: string;
+}
+
+/** 管理者画面で表示するユーザー一覧。認証情報は返さない。 */
+export function listUsers(database: Db = db): AdminUser[] {
+	return database.select({ id: users.id, username: users.username }).from(users).orderBy(users.username).all();
+}
+
+/** ユーザー本人のパスワードを更新し、現在のセッション以外を無効化する。 */
+export function changePassword(
+	userId: string,
+	passwordHash: string,
+	currentToken: string,
+	database: Db = db
+): void {
+	database.transaction((tx) => {
+		tx.update(users).set({ passwordHash, mustChangePassword: false }).where(eq(users.id, userId)).run();
+		tx.delete(sessions)
+			.where(and(eq(sessions.userId, userId), ne(sessions.id, hashToken(currentToken))))
+			.run();
+	});
+}
+
+/** 管理者リセット用。全セッションを無効化し、次回ログインで変更を要求する。 */
+export function resetPassword(userId: string, passwordHash: string, database: Db = db): boolean {
+	return database.transaction((tx) => {
+		const result = tx
+			.update(users)
+			.set({ passwordHash, mustChangePassword: true })
+			.where(eq(users.id, userId))
+			.run();
+		if (result.changes === 0) return false;
+		tx.delete(sessions).where(eq(sessions.userId, userId)).run();
+		return true;
+	});
+}
+
+/** 管理者リセット時に表示する一時パスワードを生成する。 */
+export function generateTemporaryPassword(): string {
+	return `Stockify-${randomBytes(12).toString('base64url')}!`;
+}
+
 /** ユーザー名+パスワードを検証し、一致すればユーザーを返す。 */
 export async function verifyCredentials(
 	username: string,
@@ -51,7 +96,7 @@ export async function verifyCredentials(
 }
 
 export interface SessionValidation {
-	user: Pick<UserRow, 'id' | 'username' | 'instanceRole' | 'notifyMinuteOfDay'>;
+	user: Pick<UserRow, 'id' | 'username' | 'instanceRole' | 'notifyMinuteOfDay' | 'mustChangePassword'>;
 	/** Cookie の有効期限を更新すべき場合の新しい期限(延長時のみ)。 */
 	renewedExpiresAt: number | null;
 }
@@ -80,7 +125,8 @@ export function validateSessionToken(token: string): SessionValidation | null {
 			id: users.id,
 			username: users.username,
 			instanceRole: users.instanceRole,
-			notifyMinuteOfDay: users.notifyMinuteOfDay
+			notifyMinuteOfDay: users.notifyMinuteOfDay,
+			mustChangePassword: users.mustChangePassword
 		})
 		.from(users)
 		.where(eq(users.id, row.userId))

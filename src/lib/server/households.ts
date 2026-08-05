@@ -268,6 +268,7 @@ export function registerUser(
 				id: newId(),
 				username: params.username.trim(),
 				passwordHash: params.passwordHash,
+				mustChangePassword: false,
 				instanceRole: params.requireInvite ? 'user' : 'super_admin',
 				notifyMinuteOfDay: 540,
 				createdAt: now

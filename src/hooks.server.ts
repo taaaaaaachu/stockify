@@ -1,4 +1,4 @@
-import type { Handle } from '@sveltejs/kit';
+import { redirect, type Handle } from '@sveltejs/kit';
 import { SESSION_COOKIE, validateSessionToken, invalidateSession } from '$lib/server/auth';
 import { HOUSEHOLD_COOKIE } from '$lib/server/sessionCookie';
 import { db } from '$lib/server/db';
@@ -19,6 +19,22 @@ export const handle: Handle = async ({ event, resolve }) => {
 		const result = validateSessionToken(token);
 		if (result) {
 			event.locals.user = result.user;
+			if (result.user.mustChangePassword) {
+				const pathname = event.url.pathname;
+				const allowed =
+					pathname === '/account' ||
+					pathname === '/api/account/password' ||
+					pathname === '/logout' ||
+					pathname.startsWith('/_app/');
+				if (!allowed) {
+					if (pathname.startsWith('/api/'))
+						return new Response(JSON.stringify({ message: 'パスワード変更が必要です。' }), {
+							status: 403,
+							headers: { 'content-type': 'application/json' }
+						});
+					throw redirect(303, '/account?password=required');
+				}
+			}
 			if (result.renewedExpiresAt) {
 				event.cookies.set(SESSION_COOKIE, token, cookieOpts(new Date(result.renewedExpiresAt)));
 			}
