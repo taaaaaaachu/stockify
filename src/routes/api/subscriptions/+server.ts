@@ -2,23 +2,26 @@ import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
 import { requireHousehold } from '$lib/server/apiGuard';
+import { parseFiniteNumber, parsePositiveNumber } from '$lib/server/inputValidation';
+import { isAcceptableNextDelivery } from '$lib/domain/subscription';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const { householdId } = requireHousehold(locals);
 	const body = await request.json().catch(() => null);
 	const itemId = typeof body?.itemId === 'string' ? body.itemId : '';
-	const intervalDays = Number(body?.intervalDays);
-	const nextDeliveryAt = Number(body?.nextDeliveryAt);
-	const volumePerDelivery = Number(body?.volumePerDelivery);
-	const quantityPerDelivery = Number(body?.quantityPerDelivery ?? 1);
+	const intervalDays = parsePositiveNumber(body?.intervalDays);
+	const nextDeliveryAt = parseFiniteNumber(body?.nextDeliveryAt);
+	const volumePerDelivery = parsePositiveNumber(body?.volumePerDelivery);
+	const quantityPerDelivery = parsePositiveNumber(body?.quantityPerDelivery ?? 1);
 	if (!itemId) throw error(400, '品目IDは必須です。');
-	if (!Number.isFinite(intervalDays) || intervalDays <= 0) throw error(400, '間隔が不正です。');
-	if (!Number.isFinite(nextDeliveryAt)) throw error(400, '次回予定日が不正です。');
-	if (!Number.isFinite(volumePerDelivery) || volumePerDelivery <= 0)
-		throw error(400, '内容量が不正です。');
-	if (!Number.isFinite(quantityPerDelivery) || quantityPerDelivery <= 0)
-		throw error(400, '個数が不正です。');
+	if (intervalDays === null) throw error(400, '間隔が不正です。');
+	if (nextDeliveryAt === null || !isAcceptableNextDelivery(nextDeliveryAt, Date.now()))
+		throw error(400, '次回予定日は今日以降で指定してください。');
+	if (volumePerDelivery === null) throw error(400, '内容量が不正です。');
+	if (quantityPerDelivery === null) throw error(400, '個数が不正です。');
+	if (body?.paused !== undefined && typeof body.paused !== 'boolean')
+		throw error(400, 'paused が不正です。');
 
 	const sub = stock.createSubscription(db, householdId, {
 		itemId,
@@ -26,7 +29,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		nextDeliveryAt,
 		volumePerDelivery,
 		quantityPerDelivery,
-		paused: Boolean(body?.paused)
+		paused: body?.paused ?? false
 	});
 	if (!sub) throw error(404, '品目が見つかりません。');
 	// 追加直後に過去分があれば生成しておく。

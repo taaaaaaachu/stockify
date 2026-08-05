@@ -22,8 +22,11 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 			patch[key] = n;
 		}
 	}
-	if (body?.nextDeliveryAt !== undefined && !isAcceptableNextDelivery(Number(body.nextDeliveryAt), Date.now()))
-		throw error(400, '次回予定日は今日以降で指定してください。');
+	if (body?.nextDeliveryAt !== undefined) {
+		const nextDeliveryAt = parsePositiveNumber(body.nextDeliveryAt);
+		if (nextDeliveryAt === null || !isAcceptableNextDelivery(nextDeliveryAt, Date.now()))
+			throw error(400, '次回予定日は今日以降で指定してください。');
+	}
 	if (body?.paused !== undefined) {
 		if (typeof body.paused !== 'boolean') throw error(400, 'paused が不正です。');
 		patch.paused = body.paused;

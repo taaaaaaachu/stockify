@@ -3,6 +3,9 @@ export function buildInviteRequestBody(
 ): Record<string, unknown> {
 	const body: Record<string, unknown> = {};
 	const expiry = String(inviteExpiry ?? '').trim();
-	if (expiry !== '') body.expiresInDays = Number(expiry);
+	if (expiry !== '') {
+		const days = Number(expiry);
+		body.expiresInDays = Number.isFinite(days) ? days : expiry;
+	}
 	return body;
 }

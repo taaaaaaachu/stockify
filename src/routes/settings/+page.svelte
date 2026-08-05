@@ -24,7 +24,9 @@
 
 	async function save(e: SubmitEvent) {
 		e.preventDefault();
-		const n = Number(leadTime);
+		const value = leadTime.trim();
+		if (value === '') return;
+		const n = Number(value);
 		if (!Number.isFinite(n) || n < 0) return;
 		await store.setDefaultLeadTime(n);
 		saved = true;

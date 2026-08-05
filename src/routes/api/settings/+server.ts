@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
 import { requireHousehold } from '$lib/server/apiGuard';
+import { parseNonNegativeNumber } from '$lib/server/inputValidation';
 import type { RequestHandler } from './$types';
 
 export const PATCH: RequestHandler = async ({ locals, request }) => {
@@ -9,8 +10,8 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
 	const body = await request.json().catch(() => null);
 	const patch: { defaultLeadTimeDays?: number } = {};
 	if (body?.defaultLeadTimeDays !== undefined) {
-		const n = Number(body.defaultLeadTimeDays);
-		if (!Number.isFinite(n) || n < 0) throw error(400, 'リードタイムが不正です。');
+		const n = parseNonNegativeNumber(body.defaultLeadTimeDays);
+		if (n === null) throw error(400, 'リードタイムが不正です。');
 		patch.defaultLeadTimeDays = n;
 	}
 	return json(stock.updateSettings(db, householdId, patch));

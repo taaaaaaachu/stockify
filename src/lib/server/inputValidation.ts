@@ -17,9 +17,15 @@ export function parsePositiveNumber(value: unknown): number | null {
 }
 
 export function parseFiniteNumber(value: unknown): number | null {
+	if (value === null || value === undefined || value === '') return null;
 	if (typeof value === 'boolean') return null;
 	const number = Number(value);
 	return Number.isFinite(number) ? number : null;
+}
+
+export function parseInteger(value: unknown): number | null {
+	const number = parseFiniteNumber(value);
+	return number !== null && Number.isInteger(number) ? number : null;
 }
 
 export function isValidSnapshot(value: unknown): value is Snapshot {

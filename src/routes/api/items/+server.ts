@@ -8,6 +8,14 @@ import type { RequestHandler } from './$types';
 function str(v: unknown): string {
 	return typeof v === 'string' ? v.trim() : '';
 }
+
+function optionalNonNegativeNumber(value: unknown, label: string): number | null {
+	if (value === null || value === undefined || value === '') return null;
+	const number = parseNonNegativeNumber(value);
+	if (number === null) throw error(400, `${label}が不正です。`);
+	return number;
+}
+
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const { householdId } = requireHousehold(locals);
 	const body = await request.json().catch(() => null);
@@ -19,8 +27,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		name,
 		unit,
 		category: str(body?.category) || null,
-		leadTimeDays: parseNonNegativeNumber(body?.leadTimeDays),
-		provisionalDaysToDeplete: parseNonNegativeNumber(body?.provisionalDaysToDeplete)
+		leadTimeDays: optionalNonNegativeNumber(body?.leadTimeDays, 'リードタイム'),
+		provisionalDaysToDeplete: optionalNonNegativeNumber(body?.provisionalDaysToDeplete, '仮の消費日数')
 	});
 	return json(item, { status: 201 });
 };

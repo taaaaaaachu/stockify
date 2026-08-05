@@ -14,4 +14,9 @@ describe('buildInviteRequestBody', () => {
 		expect(buildInviteRequestBody(undefined)).toEqual({});
 		expect(buildInviteRequestBody(null)).toEqual({});
 	});
+
+	it('invalid input remains invalid for server-side validation', () => {
+		expect(buildInviteRequestBody('abc')).toEqual({ expiresInDays: 'abc' });
+		expect(buildInviteRequestBody(Number.NaN)).toEqual({ expiresInDays: 'NaN' });
+	});
 });
