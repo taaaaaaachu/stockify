@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
 import { requireHousehold } from '$lib/server/apiGuard';
-import { parsePositiveNumber } from '$lib/server/inputValidation';
+import { parseFiniteNumber, parseNonNegativeNumber, parsePositiveNumber } from '$lib/server/inputValidation';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals, params }) => {
@@ -23,14 +23,14 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	if (body?.price !== undefined) {
 		if (body.price === null || body.price === '') patch.price = null;
 		else {
-			const price = Number(body.price);
-			if (!Number.isFinite(price) || price < 0) throw error(400, '価格が不正です。');
+			const price = parseNonNegativeNumber(body.price);
+			if (price === null) throw error(400, '価格が不正です。');
 			patch.price = price;
 		}
 	}
 	if (body?.purchasedAt !== undefined) {
-		const purchasedAt = Number(body.purchasedAt);
-		if (!Number.isFinite(purchasedAt)) throw error(400, '購入日時が不正です。');
+		const purchasedAt = parseFiniteNumber(body.purchasedAt);
+		if (purchasedAt === null) throw error(400, '購入日時が不正です。');
 		patch.purchasedAt = purchasedAt;
 	}
 	const purchase = stock.updatePurchase(db, householdId, params.id, patch);

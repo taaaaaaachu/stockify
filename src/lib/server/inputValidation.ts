@@ -16,6 +16,12 @@ export function parsePositiveNumber(value: unknown): number | null {
 	return Number.isFinite(number) && number > 0 ? number : null;
 }
 
+export function parseFiniteNumber(value: unknown): number | null {
+	if (typeof value === 'boolean') return null;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : null;
+}
+
 export function isValidSnapshot(value: unknown): value is Snapshot {
 	if (!value || typeof value !== 'object') return false;
 	const snapshot = value as Record<string, unknown>;
@@ -63,7 +69,7 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 				(purchase.price !== null &&
 					purchase.price !== undefined &&
 					(purchase.price === '' || parseNonNegativeNumber(purchase.price) === null)) ||
-				!Number.isFinite(Number(purchase.purchasedAt)) ||
+				parseFiniteNumber(purchase.purchasedAt) === null ||
 				(purchase.source !== 'manual' && purchase.source !== 'subscription')
 			);
 		}) ||
@@ -74,7 +80,7 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 				typeof event.id !== 'string' ||
 				typeof event.itemId !== 'string' ||
 				!itemIds.has(event.itemId) ||
-				!Number.isFinite(Number(event.at))
+				parseFiniteNumber(event.at) === null
 			);
 		}) ||
 		(snapshot.adjustments as unknown[]).some((value) => {
@@ -84,7 +90,7 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 				typeof adjustment.id !== 'string' ||
 				typeof adjustment.itemId !== 'string' ||
 				!itemIds.has(adjustment.itemId) ||
-				!Number.isFinite(Number(adjustment.at)) ||
+				parseFiniteNumber(adjustment.at) === null ||
 				parseNonNegativeNumber(adjustment.remaining) === null
 			);
 		}) ||
@@ -96,7 +102,7 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 				typeof subscription.itemId !== 'string' ||
 				!itemIds.has(subscription.itemId) ||
 				parsePositiveNumber(subscription.intervalDays) === null ||
-				!Number.isFinite(Number(subscription.nextDeliveryAt)) ||
+				parseFiniteNumber(subscription.nextDeliveryAt) === null ||
 				parsePositiveNumber(subscription.volumePerDelivery) === null ||
 				parsePositiveNumber(subscription.quantityPerDelivery) === null ||
 				typeof subscription.paused !== 'boolean'

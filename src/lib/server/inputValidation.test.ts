@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidSnapshot, parseNonNegativeNumber, parsePositiveNumber } from './inputValidation';
+import { isValidSnapshot, parseFiniteNumber, parseNonNegativeNumber, parsePositiveNumber } from './inputValidation';
 
 const item = {
 	id: 'item-1',
@@ -18,6 +18,8 @@ describe('入力検証', () => {
 		expect(parsePositiveNumber(1)).toBe(1);
 		expect(parseNonNegativeNumber(false)).toBeNull();
 		expect(parsePositiveNumber(true)).toBeNull();
+		expect(parseFiniteNumber(false)).toBeNull();
+		expect(parseFiniteNumber('123')).toBe(123);
 	});
 
 	it('不正な品目を含むスナップショットを拒否する', () => {
@@ -49,6 +51,7 @@ describe('入力検証', () => {
 		};
 		expect(isValidSnapshot(valid)).toBe(true);
 		expect(isValidSnapshot({ ...valid, purchases: [{ ...valid.purchases[0], itemId: 'missing' }] })).toBe(false);
+		expect(isValidSnapshot({ ...valid, purchases: [{ ...valid.purchases[0], purchasedAt: false }] })).toBe(false);
 		expect(
 			isValidSnapshot({
 				...valid,
