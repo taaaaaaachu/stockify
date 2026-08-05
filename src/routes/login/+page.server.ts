@@ -5,9 +5,9 @@ import { db } from '$lib/server/db';
 import { listUserHouseholds } from '$lib/server/households';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ locals }) => {
+export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) throw redirect(303, '/');
-	return {};
+	return { deleted: url.searchParams.get('deleted') === '1' };
 };
 
 export const actions: Actions = {

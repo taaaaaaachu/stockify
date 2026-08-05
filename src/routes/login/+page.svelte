@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
-	let { form } = $props();
+	let { form, data } = $props();
 </script>
 
 <h1 style="font-size:1.3rem;">ログイン</h1>
+
+{#if data.deleted}<p style="color:var(--ok);">アカウントを削除しました。</p>{/if}
 
 <form
 	method="POST"

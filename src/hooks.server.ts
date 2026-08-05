@@ -25,6 +25,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 					pathname === '/account' ||
 					pathname === '/account/__data.json' ||
 					pathname === '/api/account/password' ||
+					pathname === '/api/account/delete' ||
 					pathname === '/logout' ||
 					pathname.startsWith('/_app/') ||
 					pathname === '/manifest.webmanifest' ||

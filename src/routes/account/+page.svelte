@@ -22,6 +22,9 @@
 	let householdMembers = $derived(data.members ?? []);
 	let resetResult = $state<{ username: string; password: string } | null>(null);
 	let adminError = $state('');
+	let deleteUsername = $state('');
+	let deletePassword = $state('');
+	let deleteError = $state('');
 	let memberError = $state('');
 	let adminHouseholds = $state<HouseholdSummary[]>([]);
 	let adminHouseholdName = $state('');
@@ -85,6 +88,34 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	async function deleteAdminUser(user: AdminUser) {
+		const username = window.prompt(`削除するユーザー名「${user.username}」を入力してください。`);
+		if (username === null) return;
+		const password = window.prompt('操作するsuper_adminの現在のパスワードを入力してください。');
+		if (password === null) return;
+		const res = await fetch(`/api/admin/users/${user.id}`, {
+			method: 'DELETE',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ username, password })
+		});
+		const result = await res.json().catch(() => ({}));
+		if (!res.ok) { adminError = result.message ?? 'ユーザーの削除に失敗しました。'; return; }
+		adminUsers = adminUsers.filter((candidate) => candidate.id !== user.id);
+	}
+
+	async function deleteAccount(e: SubmitEvent) {
+		e.preventDefault();
+		deleteError = '';
+		const res = await fetch('/api/account/delete', {
+			method: 'DELETE',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ username: deleteUsername, password: deletePassword })
+		});
+		const result = await res.json().catch(() => ({}));
+		if (!res.ok) { deleteError = result.message ?? 'アカウントの削除に失敗しました。'; return; }
+		window.location.href = '/login?deleted=1';
 	}
 
 	async function promoteMember(member: HouseholdMember) {
@@ -244,6 +275,17 @@
 <PasswordChangeForm />
 
 <div style={section}>
+	<h2 style="margin:0 0 0.5rem; font-size:1rem;">アカウントの削除</h2>
+	<p style="font-size:0.85rem; color:var(--muted);">この操作は取り消せません。ownerになっている世帯がある場合は、先にownerを委任してください。</p>
+	<form onsubmit={deleteAccount} style="display:flex; flex-direction:column; gap:0.5rem; max-width:24rem;">
+		<input bind:value={deleteUsername} placeholder="ユーザー名" autocomplete="username" required />
+		<input bind:value={deletePassword} type="password" placeholder="現在のパスワード" autocomplete="current-password" required />
+		<button type="submit" disabled={busy} style="border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.4rem 0.8rem; cursor:pointer;">アカウントを削除</button>
+	</form>
+	{#if deleteError}<p style="color:var(--danger);">{deleteError}</p>{/if}
+</div>
+
+<div style={section}>
 	<h2 style="margin:0 0 0.5rem; font-size:1rem;">所属している世帯</h2>
 	<ul style="list-style:none; padding:0; margin:0 0 0.7rem;">
 		{#each store.households as h (h.id)}
@@ -398,6 +440,7 @@
 					<li style="display:flex; gap:0.5rem; align-items:center;">
 						<span>{user.username}</span>
 						<button onclick={() => resetUser(user)} disabled={busy} style="margin-left:auto; border:1px solid var(--warn); background:var(--card); color:var(--warn); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">一時パスワードを発行</button>
+						<button onclick={() => deleteAdminUser(user)} disabled={busy} style="border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">削除</button>
 					</li>
 				{/each}
 			</ul>

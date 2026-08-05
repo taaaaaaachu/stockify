@@ -1,8 +1,8 @@
 import { hash, verify } from '@node-rs/argon2';
 import { randomBytes, createHash } from 'node:crypto';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, count } from 'drizzle-orm';
 import { db } from './db';
-import { users, sessions, type UserRow } from './db/schema';
+import { users, sessions, memberships, ownershipTransfers, type UserRow } from './db/schema';
 import type { Db } from './db';
 
 export const SESSION_COOKIE = 'session';
@@ -73,6 +73,41 @@ export function resetPassword(userId: string, passwordHash: string, database: Db
 		tx.delete(sessions).where(eq(sessions.userId, userId)).run();
 		return true;
 	});
+}
+
+export type DeleteUserResult =
+	| { ok: true }
+	| { ok: false; error: 'not_found' | 'owns_household' | 'last_super_admin' };
+
+/** ユーザーを即時・完全削除する。世帯と世帯所有データは維持する。 */
+export function deleteUserAccount(userId: string, database: Db = db): DeleteUserResult {
+	return database.transaction((tx): DeleteUserResult => {
+		const user = tx.select({ id: users.id, instanceRole: users.instanceRole }).from(users).where(eq(users.id, userId)).get();
+		if (!user) return { ok: false, error: 'not_found' };
+
+		const ownerHousehold = tx
+			.select({ id: memberships.id })
+			.from(memberships)
+			.where(and(eq(memberships.userId, userId), eq(memberships.role, 'owner')))
+			.get();
+		if (ownerHousehold) return { ok: false, error: 'owns_household' };
+
+		if (user.instanceRole === 'super_admin') {
+			const adminCount = tx.select({ value: count() }).from(users).where(eq(users.instanceRole, 'super_admin')).get()?.value ?? 0;
+			if (adminCount <= 1) return { ok: false, error: 'last_super_admin' };
+		}
+
+		// 外部キーの cascade / SET NULL により所属・セッション・招待の参照を整理する。
+		tx.delete(ownershipTransfers).where(eq(ownershipTransfers.currentOwnerId, userId)).run();
+		tx.delete(users).where(eq(users.id, userId)).run();
+		return { ok: true };
+	});
+}
+
+/** 指定ユーザーの現在のパスワードを検証する。 */
+export async function verifyUserPassword(userId: string, password: string, database: Db = db): Promise<boolean> {
+	const user = database.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, userId)).get();
+	return user ? verify(user.passwordHash, password).catch(() => false) : false;
 }
 
 /** 管理者リセット時に表示する一時パスワードを生成する。 */
