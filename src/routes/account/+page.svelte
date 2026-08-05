@@ -184,14 +184,25 @@
 </div>
 
 <div style={section}>
-	<h2 style="margin:0 0 0.5rem; font-size:1rem;">新しい世帯を作成</h2>
+	<h2 style="margin:0 0 0.5rem; font-size:1rem;">所属している世帯</h2>
+	<ul style="list-style:none; padding:0; margin:0 0 0.7rem;">
+		{#each store.households as h (h.id)}
+			<li style="display:flex; gap:0.5rem; align-items:center; font-size:0.9rem;">
+				<span>{h.name}</span>
+				<span style="color:var(--muted);">({h.role === 'owner' ? 'オーナー' : 'メンバー'})</span>
+				{#if store.activeHousehold?.id === h.id}
+					<span style="color:var(--accent); font-size:0.75rem;">選択中</span>
+				{/if}
+			</li>
+		{/each}
+	</ul>
 	<form onsubmit={createHousehold} style="display:flex; gap:0.5rem;">
-		<input bind:value={newHousehold} placeholder="世帯名(例: 実家)" style="flex:1;" />
+		<input bind:value={newHousehold} placeholder="新しい世帯名(例: 実家)" style="flex:1;" />
 		<button
 			type="submit"
 			disabled={busy}
 			style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;"
-			>作成</button
+			>世帯を作成</button
 		>
 	</form>
 </div>
