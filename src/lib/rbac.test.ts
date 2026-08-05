@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isInstanceAdmin, canManageHousehold, canEditStock } from './rbac';
+import { isInstanceAdmin, canManageInvites, canManageMembers, canEditStock } from './rbac';
 
 describe('isInstanceAdmin', () => {
 	it('super_admin のみ true', () => {
@@ -8,18 +8,19 @@ describe('isInstanceAdmin', () => {
 	});
 });
 
-describe('canManageHousehold', () => {
+describe('household capabilities', () => {
 	it('世帯 owner は管理できる', () => {
-		expect(canManageHousehold('owner', 'user')).toBe(true);
+		expect(canManageInvites('owner')).toBe(true);
+		expect(canManageMembers('owner')).toBe(true);
 	});
-	it('世帯 member は管理できない', () => {
-		expect(canManageHousehold('member', 'user')).toBe(false);
+	it('managerは招待だけ管理できる', () => {
+		expect(canManageInvites('manager')).toBe(true);
+		expect(canManageMembers('manager')).toBe(false);
 	});
-	it('非所属でもインスタンス管理者なら管理できる', () => {
-		expect(canManageHousehold(null, 'super_admin')).toBe(true);
-	});
-	it('非所属の一般ユーザーは管理できない', () => {
-		expect(canManageHousehold(null, 'user')).toBe(false);
+	it('memberと非所属は招待・メンバー管理できない', () => {
+		expect(canManageInvites('member')).toBe(false);
+		expect(canManageInvites(null)).toBe(false);
+		expect(canManageMembers('member')).toBe(false);
 	});
 });
 

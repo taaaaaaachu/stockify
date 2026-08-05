@@ -59,6 +59,25 @@ export const memberships = sqliteTable(
 	]
 );
 
+/** 代表owner交代の保留申請。世帯ごとに保留は1件だけ。 */
+export const ownershipTransfers = sqliteTable(
+	'ownership_transfers',
+	{
+		id: text('id').primaryKey(),
+		householdId: text('household_id')
+			.notNull()
+			.references(() => households.id, { onDelete: 'cascade' }),
+			currentOwnerId: text('current_owner_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+			candidateUserId: text('candidate_user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		createdAt: integer('created_at').notNull()
+	},
+	(t) => [unique('ownership_transfers_household_uq').on(t.householdId), index('ownership_transfers_candidate_idx').on(t.candidateUserId)]
+);
+
 /** 招待コード。特定の世帯へメンバーを招く。単回使用。 */
 export const invites = sqliteTable(
 	'invites',
@@ -186,6 +205,7 @@ export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type HouseholdRow = typeof households.$inferSelect;
 export type MembershipRow = typeof memberships.$inferSelect;
+export type OwnershipTransferRow = typeof ownershipTransfers.$inferSelect;
 export type InviteRow = typeof invites.$inferSelect;
 export type StockItemRow = typeof stockItems.$inferSelect;
 export type PurchaseRow = typeof purchases.$inferSelect;

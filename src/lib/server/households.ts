@@ -1,4 +1,4 @@
-import { and, eq, desc, isNull } from 'drizzle-orm';
+import { and, eq, desc, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { randomBytes } from 'node:crypto';
 import type { Db } from './db';
@@ -6,10 +6,12 @@ import {
 	users,
 	households,
 	memberships,
+	ownershipTransfers,
 	invites,
 	type UserRow,
 	type HouseholdRow,
-	type InviteRow
+	type InviteRow,
+	type OwnershipTransferRow
 } from './db/schema';
 import type { HouseholdRole } from '$lib/rbac';
 
@@ -27,8 +29,8 @@ export function countUsers(db: Db): number {
 	return db.select({ id: users.id }).from(users).all().length;
 }
 
-/** 世帯を作成し、作成者を owner として所属させる。 */
-export function createHousehold(db: Db, name: string, ownerUserId: string): HouseholdRow {
+/** 世帯を作成する。ownerUserIdがnullなら、招待待ちの空世帯にする。 */
+export function createHousehold(db: Db, name: string, ownerUserId: string | null = null): HouseholdRow {
 	const now = Date.now();
 	const household: HouseholdRow = {
 		id: newId(),
@@ -38,9 +40,11 @@ export function createHousehold(db: Db, name: string, ownerUserId: string): Hous
 	};
 	db.transaction((tx) => {
 		tx.insert(households).values(household).run();
-		tx.insert(memberships)
-			.values({ id: newId(), userId: ownerUserId, householdId: household.id, role: 'owner', createdAt: now })
-			.run();
+		if (ownerUserId) {
+			tx.insert(memberships)
+				.values({ id: newId(), userId: ownerUserId, householdId: household.id, role: 'owner', createdAt: now })
+				.run();
+		}
 	});
 	return household;
 }
@@ -72,11 +76,11 @@ export function listHouseholdMembers(db: Db, householdId: string): HouseholdMemb
 		.all();
 }
 
-/** 世帯のmemberをownerへ昇格する。既にownerまたは非所属ならfalse。 */
-export function promoteMemberToOwner(db: Db, householdId: string, userId: string): boolean {
+/** 世帯のmemberをmanagerへ任命する。既に管理者または非所属ならfalse。 */
+export function promoteMemberToManager(db: Db, householdId: string, userId: string): boolean {
 	const result = db
 		.update(memberships)
-		.set({ role: 'owner' })
+		.set({ role: 'manager' })
 		.where(
 			and(
 				eq(memberships.householdId, householdId),
@@ -88,11 +92,135 @@ export function promoteMemberToOwner(db: Db, householdId: string, userId: string
 	return result.changes > 0;
 }
 
+/** managerをmemberへ戻す。 */
+export function demoteManager(db: Db, householdId: string, userId: string): boolean {
+	const result = db
+		.update(memberships)
+		.set({ role: 'member' })
+		.where(and(eq(memberships.householdId, householdId), eq(memberships.userId, userId), eq(memberships.role, 'manager')))
+		.run();
+	return result.changes > 0;
+}
+
+/** 代表owner以外のメンバーを除名する。 */
+export function removeHouseholdMember(db: Db, householdId: string, userId: string): boolean {
+	const result = db
+		.delete(memberships)
+		.where(and(eq(memberships.householdId, householdId), eq(memberships.userId, userId), eq(memberships.role, 'member')))
+		.run();
+	return result.changes > 0;
+}
+
+/** manager/memberが脱退する。代表ownerと最後の所属者は脱退不可。 */
+export function leaveHousehold(db: Db, householdId: string, userId: string): boolean {
+	const membership = db
+		.select({ role: memberships.role })
+		.from(memberships)
+		.where(and(eq(memberships.householdId, householdId), eq(memberships.userId, userId)))
+		.get();
+	if (!membership || membership.role === 'owner') return false;
+	return db.delete(memberships).where(and(eq(memberships.householdId, householdId), eq(memberships.userId, userId))).run().changes > 0;
+}
+
+export interface OwnershipTransfer {
+	id: string;
+	householdId: string;
+	householdName: string;
+	currentOwnerId: string;
+	currentOwnerName: string;
+	candidateUserId: string;
+	candidateUserName: string;
+	createdAt: number;
+}
+
+function mapOwnershipTransfer(row: OwnershipTransferRow & { householdName: string; currentOwnerName: string; candidateUserName: string }): OwnershipTransfer {
+	return { ...row, householdName: row.householdName, currentOwnerName: row.currentOwnerName, candidateUserName: row.candidateUserName };
+}
+
+/** 代表ownerが交代候補を指名する。 */
+export function requestOwnershipTransfer(db: Db, householdId: string, currentOwnerId: string, candidateUserId: string): OwnershipTransfer | null {
+	const candidate = db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.householdId, householdId), eq(memberships.userId, candidateUserId))).get();
+	if (!candidate || (candidate.role !== 'member' && candidate.role !== 'manager')) return null;
+	const current = db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.householdId, householdId), eq(memberships.userId, currentOwnerId), eq(memberships.role, 'owner'))).get();
+	if (!current) return null;
+	const row: OwnershipTransferRow = { id: newId(), householdId, currentOwnerId, candidateUserId, createdAt: Date.now() };
+	try {
+		db.insert(ownershipTransfers).values(row).run();
+	} catch {
+		return null;
+	}
+	return getOwnershipTransfer(db, row.id);
+}
+
+export function getOwnershipTransfer(db: Db, id: string): OwnershipTransfer | null {
+	const currentOwner = alias(users, 'transfer_current_owner');
+	const candidate = alias(users, 'transfer_candidate');
+	const row = db.select({ id: ownershipTransfers.id, householdId: ownershipTransfers.householdId, currentOwnerId: ownershipTransfers.currentOwnerId, candidateUserId: ownershipTransfers.candidateUserId, createdAt: ownershipTransfers.createdAt, householdName: households.name, currentOwnerName: currentOwner.username, candidateUserName: candidate.username }).from(ownershipTransfers).innerJoin(households, eq(ownershipTransfers.householdId, households.id)).innerJoin(currentOwner, eq(ownershipTransfers.currentOwnerId, currentOwner.id)).innerJoin(candidate, eq(ownershipTransfers.candidateUserId, candidate.id)).where(eq(ownershipTransfers.id, id)).get();
+	return row ? mapOwnershipTransfer(row) : null;
+}
+
+export function listPendingOwnershipTransfers(db: Db, candidateUserId: string): OwnershipTransfer[] {
+	const currentOwner = alias(users, 'pending_current_owner');
+	const candidate = alias(users, 'pending_candidate');
+	return db.select({ id: ownershipTransfers.id, householdId: ownershipTransfers.householdId, currentOwnerId: ownershipTransfers.currentOwnerId, candidateUserId: ownershipTransfers.candidateUserId, createdAt: ownershipTransfers.createdAt, householdName: households.name, currentOwnerName: currentOwner.username, candidateUserName: candidate.username }).from(ownershipTransfers).innerJoin(households, eq(ownershipTransfers.householdId, households.id)).innerJoin(currentOwner, eq(ownershipTransfers.currentOwnerId, currentOwner.id)).innerJoin(candidate, eq(ownershipTransfers.candidateUserId, candidate.id)).where(eq(ownershipTransfers.candidateUserId, candidateUserId)).all().map(mapOwnershipTransfer);
+}
+
+export function cancelOwnershipTransfer(db: Db, householdId: string, currentOwnerId: string): boolean {
+	return db.delete(ownershipTransfers).where(and(eq(ownershipTransfers.householdId, householdId), eq(ownershipTransfers.currentOwnerId, currentOwnerId))).run().changes > 0;
+}
+
+export function rejectOwnershipTransfer(db: Db, id: string, candidateUserId: string): boolean {
+	return db.delete(ownershipTransfers).where(and(eq(ownershipTransfers.id, id), eq(ownershipTransfers.candidateUserId, candidateUserId))).run().changes > 0;
+}
+
+export function acceptOwnershipTransfer(db: Db, id: string, candidateUserId: string): boolean {
+	return db.transaction((tx) => {
+		const transfer = tx.select().from(ownershipTransfers).where(and(eq(ownershipTransfers.id, id), eq(ownershipTransfers.candidateUserId, candidateUserId))).get();
+		if (!transfer) return false;
+		const oldOwner = tx.update(memberships).set({ role: 'manager' }).where(and(eq(memberships.householdId, transfer.householdId), eq(memberships.userId, transfer.currentOwnerId), eq(memberships.role, 'owner'))).run();
+		const newOwner = tx.update(memberships).set({ role: 'owner' }).where(and(eq(memberships.householdId, transfer.householdId), eq(memberships.userId, candidateUserId), eq(memberships.role, 'member'))).run();
+		const newOwnerFromManager = newOwner.changes > 0 ? newOwner : tx.update(memberships).set({ role: 'owner' }).where(and(eq(memberships.householdId, transfer.householdId), eq(memberships.userId, candidateUserId), eq(memberships.role, 'manager'))).run();
+		if (oldOwner.changes === 0 || newOwnerFromManager.changes === 0) return false;
+		tx.delete(ownershipTransfers).where(eq(ownershipTransfers.id, id)).run();
+		return true;
+	});
+}
+
 export interface UserHousehold {
 	id: string;
 	name: string;
 	role: HouseholdRole;
 	defaultLeadTimeDays: number;
+}
+
+export interface HouseholdSummary {
+	id: string;
+	name: string;
+	memberCount: number;
+	ownerCount: number;
+	itemCount: number;
+	createdAt: number;
+	activeInviteCount: number;
+}
+
+/** super_admin向け。所属有無に関係なくメタデータだけを返す。 */
+export function listHouseholdSummaries(db: Db): HouseholdSummary[] {
+	return db.select({
+		id: households.id,
+		name: households.name,
+		createdAt: households.createdAt,
+		memberCount: sql<number>`(select count(*) from memberships where memberships.household_id = ${households.id})`,
+		ownerCount: sql<number>`(select count(*) from memberships where memberships.household_id = ${households.id} and memberships.role = 'owner')`,
+		itemCount: sql<number>`(select count(*) from stock_items where stock_items.household_id = ${households.id})`,
+		activeInviteCount: sql<number>`(select count(*) from invites where invites.household_id = ${households.id} and invites.used_by is null and invites.revoked_at is null and (invites.expires_at is null or invites.expires_at > ${Date.now()}))`
+	}).from(households).orderBy(households.createdAt).all();
+}
+
+/** super_adminが世帯を完全削除する。関連データは外部キーのcascadeに任せる。 */
+export function deleteHousehold(db: Db, householdId: string, expectedName: string): boolean {
+	const household = db.select({ name: households.name }).from(households).where(eq(households.id, householdId)).get();
+	if (!household || household.name !== expectedName.trim()) return false;
+	return db.delete(households).where(eq(households.id, householdId)).run().changes > 0;
 }
 
 /** ユーザーが所属する世帯の一覧(作成順)。 */
@@ -315,13 +443,18 @@ export function registerUser(
 			}
 
 			if (params.requireInvite && invite) {
-				// 招待経由 → その世帯へ member として所属し、招待を消費する。
+				// 招待経由 → 空世帯なら最初の代表owner、それ以外はmemberとして所属。
+				const existingMembership = tx
+					.select({ id: memberships.id })
+					.from(memberships)
+					.where(eq(memberships.householdId, targetHouseholdId))
+					.get();
 				tx.insert(memberships)
 					.values({
 						id: newId(),
 						userId: user.id,
 						householdId: targetHouseholdId,
-						role: 'member',
+						role: existingMembership ? 'member' : 'owner',
 						createdAt: now
 					})
 					.run();
@@ -351,5 +484,29 @@ export function registerUser(
 			}
 
 			return { ok: true, user, householdId: targetHouseholdId };
+	});
+}
+
+export type JoinHouseholdResult =
+	| { ok: true; householdId: string; role: HouseholdRole }
+	| { ok: false; error: Exclude<RegisterResult, { ok: true }>['error'] | 'already_member' };
+
+/** ログイン済みユーザーが招待コードで世帯へ参加する。 */
+export function joinHouseholdByInvite(db: Db, userId: string, inviteCode: string): JoinHouseholdResult {
+	const now = Date.now();
+	return db.transaction((tx): JoinHouseholdResult => {
+		const invite = tx.select().from(invites).where(eq(invites.code, inviteCode.trim())).get();
+		if (!invite) return { ok: false, error: 'invite_invalid' };
+		if (invite.revokedAt !== null) return { ok: false, error: 'invite_revoked' };
+		if (invite.usedBy) return { ok: false, error: 'invite_used' };
+		if (invite.expiresAt !== null && now >= invite.expiresAt) return { ok: false, error: 'invite_expired' };
+		const already = tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.householdId, invite.householdId))).get();
+		if (already) return { ok: false, error: 'already_member' };
+		const hasMember = tx.select({ id: memberships.id }).from(memberships).where(eq(memberships.householdId, invite.householdId)).get();
+		const role: HouseholdRole = hasMember ? 'member' : 'owner';
+		tx.insert(memberships).values({ id: newId(), userId, householdId: invite.householdId, role, createdAt: now }).run();
+		const consumed = tx.update(invites).set({ usedBy: userId, usedAt: now }).where(and(eq(invites.id, invite.id), isNull(invites.usedBy), isNull(invites.revokedAt))).run();
+		if (consumed.changes === 0) return { ok: false, error: 'invite_used' };
+		return { ok: true, householdId: invite.householdId, role };
 	});
 }

@@ -11,8 +11,11 @@ import {
 	listHouseholdInvites,
 	revokeInvite,
 	registerUser,
-	listHouseholdMembers,
-	promoteMemberToOwner
+	promoteMemberToManager,
+	requestOwnershipTransfer,
+	acceptOwnershipTransfer,
+	joinHouseholdByInvite,
+	listPendingOwnershipTransfers
 } from './households';
 
 let db: Db;
@@ -142,11 +145,12 @@ describe('複数世帯所属', () => {
 	});
 });
 
-describe('世帯owner管理', () => {
-	it('一般ユーザーも世帯を作成でき、memberをownerへ昇格できる', () => {
+describe('世帯ロール管理', () => {
+	it('空世帯への最初の参加者がownerになり、memberをmanagerへ任命できる', () => {
 		const owner = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
 		if (!owner.ok) throw new Error('setup failed');
-		const invite = createInvite(db, owner.householdId, owner.user.id, null);
+		const household = createHousehold(db, '新しい世帯');
+		const invite = createInvite(db, household.id, owner.user.id, null);
 		const member = registerUser(db, {
 			username: 'bob',
 			passwordHash: 'x',
@@ -154,16 +158,42 @@ describe('世帯owner管理', () => {
 			inviteCode: invite.code
 		});
 		if (!member.ok) throw new Error('setup failed');
-
-		const household = createHousehold(db, 'ボブの家', member.user.id);
 		expect(getMembership(db, member.user.id, household.id)).toBe('owner');
-		expect(listHouseholdMembers(db, owner.householdId)).toEqual([
-			{ userId: owner.user.id, username: 'alice', role: 'owner' },
-			{ userId: member.user.id, username: 'bob', role: 'member' }
-		]);
-		expect(promoteMemberToOwner(db, owner.householdId, member.user.id)).toBe(true);
-		expect(getMembership(db, member.user.id, owner.householdId)).toBe('owner');
-		expect(promoteMemberToOwner(db, owner.householdId, member.user.id)).toBe(false);
+		const secondInvite = createInvite(db, household.id, member.user.id, null);
+		const third = registerUser(db, { username: 'carol', passwordHash: 'x', requireInvite: true, inviteCode: secondInvite.code });
+		if (!third.ok) throw new Error('setup failed');
+		expect(getMembership(db, third.user.id, household.id)).toBe('member');
+		expect(promoteMemberToManager(db, household.id, third.user.id)).toBe(true);
+		expect(getMembership(db, third.user.id, household.id)).toBe('manager');
+		expect(promoteMemberToManager(db, household.id, third.user.id)).toBe(false);
+	});
+});
+
+describe('代表owner交代', () => {
+	it('候補本人の承認でownerを交代し、旧ownerをmanagerにする', () => {
+		const first = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		if (!first.ok) throw new Error('setup failed');
+		const invite = createInvite(db, first.householdId, first.user.id, null);
+		const second = registerUser(db, { username: 'bob', passwordHash: 'x', requireInvite: true, inviteCode: invite.code });
+		if (!second.ok) throw new Error('setup failed');
+		const transfer = requestOwnershipTransfer(db, first.householdId, first.user.id, second.user.id);
+		if (!transfer) throw new Error('transfer request failed');
+		expect(listPendingOwnershipTransfers(db, second.user.id)).toHaveLength(1);
+		expect(acceptOwnershipTransfer(db, transfer.id, second.user.id)).toBe(true);
+		expect(getMembership(db, first.user.id, first.householdId)).toBe('manager');
+		expect(getMembership(db, second.user.id, first.householdId)).toBe('owner');
+		expect(listPendingOwnershipTransfers(db, second.user.id)).toHaveLength(0);
+	});
+});
+
+describe('既存アカウントの招待参加', () => {
+	it('参加後は招待先世帯へ所属し、空世帯ならownerになる', () => {
+		const first = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		if (!first.ok) throw new Error('setup failed');
+		const household = createHousehold(db, '実家');
+		const invite = createInvite(db, household.id, first.user.id, null);
+		expect(joinHouseholdByInvite(db, first.user.id, invite.code)).toEqual({ ok: true, householdId: household.id, role: 'owner' });
+		expect(getMembership(db, first.user.id, household.id)).toBe('owner');
 	});
 });
 

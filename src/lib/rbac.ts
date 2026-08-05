@@ -1,33 +1,37 @@
-// クライアント・サーバー両方から使う純粋な権限判定。副作用・DB依存なし(ADR 0003)。
+// クライアント・サーバー両方から使う純粋な権限判定。副作用・DB依存なし。
 
 /** インスタンス全体のロール。運営者は super_admin、通常会員は user。 */
 export type InstanceRole = 'super_admin' | 'user';
 
-/** ある世帯におけるロール。owner は世帯の管理、member は在庫の閲覧・編集のみ。 */
-export type HouseholdRole = 'owner' | 'member';
+/** ある世帯におけるロール。owner はUI上「代表owner」と表示する。 */
+export type HouseholdRole = 'owner' | 'manager' | 'member';
 
 /** インスタンス管理者(サーバー全体の運営者)か。 */
 export function isInstanceAdmin(role: InstanceRole): boolean {
 	return role === 'super_admin';
 }
 
-/**
- * 世帯そのものを管理できるか(招待発行・メンバー除名・世帯削除・世帯設定変更)。
- * その世帯の owner、またはインスタンス管理者なら可。
- * householdRole は非所属なら null。
- */
-export function canManageHousehold(
-	householdRole: HouseholdRole | null,
-	instanceRole: InstanceRole
-): boolean {
-	return householdRole === 'owner' || isInstanceAdmin(instanceRole);
+/** 招待コードを管理できるか。super_adminの暗黙権限は与えない。 */
+export function canManageInvites(householdRole: HouseholdRole | null): boolean {
+	return householdRole === 'owner' || householdRole === 'manager';
 }
 
-/**
- * 世帯の在庫(品目・購入・定期便など)を閲覧・編集できるか。
- * その世帯に所属(owner/member どちらでも)していれば可。
- * householdRole は非所属なら null。
- */
+/** managerの任命・解任、メンバー除名、世帯設定変更を行えるか。 */
+export function canManageMembers(householdRole: HouseholdRole | null): boolean {
+	return householdRole === 'owner';
+}
+
+/** 代表ownerの交代を開始できるか。 */
+export function canTransferOwnership(householdRole: HouseholdRole | null): boolean {
+	return householdRole === 'owner';
+}
+
+/** 後方互換用。旧来の「世帯管理」は招待管理として扱う。 */
+export function canManageHousehold(householdRole: HouseholdRole | null): boolean {
+	return canManageInvites(householdRole);
+}
+
+/** 世帯の在庫(品目・購入・定期便など)を閲覧・編集できるか。 */
 export function canEditStock(householdRole: HouseholdRole | null): boolean {
-	return householdRole === 'owner' || householdRole === 'member';
+	return householdRole !== null;
 }
