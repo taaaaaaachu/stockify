@@ -13,6 +13,7 @@
 	let joinError = $state('');
 	let inviteExpiry = $state('');
 	let lastCode = $state<string | null>(null);
+	let copiedCode = $state<string | null>(null);
 	let busy = $state(false);
 	type AdminUser = { id: string; username: string };
 	type HouseholdSummary = { id: string; name: string; memberCount: number; ownerCount: number; itemCount: number; createdAt: number; activeInviteCount: number };
@@ -26,6 +27,18 @@
 	let adminHouseholdName = $state('');
 	let adminHouseholdError = $state('');
 	let adminInviteCodes = $state<Record<string, string>>({});
+
+	async function copyInviteCode(code: string) {
+		try {
+			await navigator.clipboard.writeText(code);
+			copiedCode = code;
+			setTimeout(() => {
+				if (copiedCode === code) copiedCode = null;
+			}, 2000);
+		} catch {
+			// クリップボードが使えない環境でも、画面上のコードは利用できる。
+		}
+	}
 
 	// ゲスト(IndexedDB)に残っているローカルデータの件数(取り込み導線用)。
 	let guestItemCount = $state(0);
@@ -139,6 +152,7 @@
 			});
 			const json = await res.json();
 			lastCode = json.code ?? null;
+			if (lastCode) await copyInviteCode(lastCode);
 			await invalidateAll();
 		} finally {
 			busy = false;
@@ -182,6 +196,7 @@
 		const result = await res.json().catch(() => ({}));
 		if (!res.ok) { adminHouseholdError = result.message ?? '招待コードの発行に失敗しました。'; return; }
 		adminInviteCodes = { ...adminInviteCodes, [household.id]: result.code };
+		if (result.code) await copyInviteCode(result.code);
 	}
 
 	async function importGuest() {
@@ -284,7 +299,10 @@
 			>
 		</form>
 		{#if lastCode}
-			<p style="font-size:0.9rem;">発行しました: <code style="font-weight:700;">{lastCode}</code></p>
+			<p style="font-size:0.9rem; display:flex; gap:0.5rem; align-items:center;">
+				<span>発行しました: <code style="font-weight:700; user-select:all;">{lastCode}</code></span>
+				<button type="button" onclick={() => copyInviteCode(lastCode!)} style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === lastCode ? 'コピーしました' : 'コピー'}</button>
+			</p>
 		{/if}
 		{#if data.invites.length > 0}
 			<ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.3rem;">
@@ -359,7 +377,10 @@
 			<div style="display:flex; gap:0.5rem; align-items:center; font-size:0.85rem; border-top:1px solid var(--border); padding:0.4rem 0;">
 				<span>{household.name}</span><span style="color:var(--muted);">所属{household.memberCount}人 / owner{household.ownerCount}人 / 品目{household.itemCount}件 / 招待{household.activeInviteCount}件</span>
 				<button onclick={() => createAdminInvite(household)}>招待コード発行</button>
-				{#if adminInviteCodes[household.id]}<code>{adminInviteCodes[household.id]}</code>{/if}
+				{#if adminInviteCodes[household.id]}
+					<code style="user-select:all;">{adminInviteCodes[household.id]}</code>
+					<button type="button" onclick={() => copyInviteCode(adminInviteCodes[household.id])}>{copiedCode === adminInviteCodes[household.id] ? 'コピーしました' : 'コピー'}</button>
+				{/if}
 				<button onclick={() => deleteAdminHousehold(household)} style="margin-left:auto; color:var(--danger);">削除</button>
 			</div>
 		{/each}
