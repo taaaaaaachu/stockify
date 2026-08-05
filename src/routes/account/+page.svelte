@@ -373,17 +373,17 @@
 		<p style="font-size:0.85rem; color:var(--muted);">所属していない世帯もメタデータだけ確認できます。削除は在庫・所属ユーザーを含めて復元できません。</p>
 		<form onsubmit={createAdminHousehold} style="display:flex; gap:0.5rem; margin-bottom:0.7rem;">
 			<input bind:value={adminHouseholdName} placeholder="新しい空世帯名" style="flex:1;" />
-			<button type="submit" disabled={busy}>空世帯を作成</button>
+			<button type="submit" disabled={busy} style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;">空世帯を作成</button>
 		</form>
 		{#each adminHouseholds as household (household.id)}
 			<div style="display:flex; gap:0.5rem; align-items:center; font-size:0.85rem; border-top:1px solid var(--border); padding:0.4rem 0;">
 				<span>{household.name}</span><span style="color:var(--muted);">所属{household.memberCount}人 / owner{household.ownerCount}人 / 品目{household.itemCount}件 / 招待{household.activeInviteCount}件</span>
-				<button onclick={() => createAdminInvite(household)}>招待コード発行</button>
+				<button onclick={() => createAdminInvite(household)} style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.3rem 0.6rem; cursor:pointer;">招待コード発行</button>
 				{#if adminInviteCodes[household.id]}
 					<code style="user-select:all;">{adminInviteCodes[household.id]}</code>
-					<button type="button" onclick={() => copyInviteCode(adminInviteCodes[household.id])}>{copiedCode === adminInviteCodes[household.id] ? 'コピーしました' : 'コピー'}</button>
+					<button type="button" onclick={() => copyInviteCode(adminInviteCodes[household.id])} style="border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === adminInviteCodes[household.id] ? 'コピーしました' : 'コピー'}</button>
 				{/if}
-				<button onclick={() => deleteAdminHousehold(household)} style="margin-left:auto; color:var(--danger);">削除</button>
+				<button onclick={() => deleteAdminHousehold(household)} style="margin-left:auto; border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">削除</button>
 			</div>
 		{/each}
 		{#if adminHouseholdError}<p style="color:var(--danger);">{adminHouseholdError}</p>{/if}
