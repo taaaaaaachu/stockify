@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
 import { requireHousehold } from '$lib/server/apiGuard';
+import { parsePositiveNumber } from '$lib/server/inputValidation';
 import type { RequestHandler } from './$types';
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -15,11 +16,13 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		'quantityPerDelivery'
 	] as const) {
 		if (body?.[key] !== undefined) {
-			const n = Number(body[key]);
-			if (!Number.isFinite(n)) throw error(400, `${key} が不正です。`);
+			const n = parsePositiveNumber(body[key]);
+			if (n === null) throw error(400, `${key} が不正です。`);
 			patch[key] = n;
 		}
 	}
+	if (body?.nextDeliveryAt !== undefined && !Number.isFinite(Number(body.nextDeliveryAt)))
+		throw error(400, 'nextDeliveryAt が不正です。');
 	if (body?.paused !== undefined) patch.paused = Boolean(body.paused);
 
 	const sub = stock.updateSubscription(db, householdId, params.id, patch);

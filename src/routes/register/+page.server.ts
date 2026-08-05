@@ -21,6 +21,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 	invite_expired: 'この招待コードは有効期限が切れています。',
 	invite_used: 'この招待コードは既に使われています。',
 	invite_revoked: 'この招待コードは無効化されています。',
+	invite_required: '現在は招待コードが必要です。',
 	username_taken: 'このユーザー名は既に使われています。'
 };
 

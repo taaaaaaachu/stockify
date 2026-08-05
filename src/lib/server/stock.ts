@@ -185,6 +185,20 @@ export function createPurchase(db: Db, householdId: string, input: PurchaseInput
 	return toPurchase(row);
 }
 
+export function updatePurchase(
+	db: Db,
+	householdId: string,
+	id: string,
+	patch: Partial<Omit<Purchase, 'id' | 'itemId'>>
+): Purchase | null {
+	if (!childItemId(db, householdId, purchases, id)) return null;
+	const existing = db.select().from(purchases).where(eq(purchases.id, id)).get();
+	if (!existing) return null;
+	const updated = { ...existing, ...patch };
+	db.update(purchases).set(updated).where(eq(purchases.id, id)).run();
+	return toPurchase(updated);
+}
+
 export function deletePurchase(db: Db, householdId: string, id: string): boolean {
 	if (!childItemId(db, householdId, purchases, id)) return false;
 	db.delete(purchases).where(eq(purchases.id, id)).run();

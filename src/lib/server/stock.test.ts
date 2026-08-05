@@ -73,6 +73,20 @@ describe('購入と所有チェック', () => {
 		expect(stock.deletePurchase(db, hhB, p.id)).toBe(false);
 		expect(stock.deletePurchase(db, hhA, p.id)).toBe(true);
 	});
+
+	it('購入を世帯内で更新できる', () => {
+		const item = stock.createItem(db, hhA, {
+			name: '洗剤', unit: 'ml', category: null, leadTimeDays: null, provisionalDaysToDeplete: null
+		});
+		const purchase = stock.createPurchase(db, hhA, {
+			itemId: item.id, volume: 500, price: 300, purchasedAt: 1, source: 'manual'
+		});
+		if (!purchase) throw new Error('setup failed');
+		const updated = stock.updatePurchase(db, hhA, purchase.id, { volume: 750, price: null });
+		expect(updated?.volume).toBe(750);
+		expect(updated?.price).toBeNull();
+		expect(stock.updatePurchase(db, hhB, purchase.id, { volume: 1 })).toBeNull();
+	});
 });
 
 describe('品目削除のカスケード', () => {

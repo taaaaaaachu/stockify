@@ -108,11 +108,24 @@ describe('招待経由の登録', () => {
 	});
 
 	it('ユーザー名重複は拒否される', () => {
-		registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
-		const owner2 = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		const owner = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		if (!owner.ok) throw new Error('setup failed');
+		const invite = createInvite(db, owner.householdId, owner.user.id, null);
+		const owner2 = registerUser(db, {
+			username: 'alice',
+			passwordHash: 'x',
+			requireInvite: true,
+			inviteCode: invite.code
+		});
 		expect(owner2.ok).toBe(false);
 		if (owner2.ok) return;
 		expect(owner2.error).toBe('username_taken');
+	});
+
+	it('ブートストラップ判定を登録処理内でも再確認する', () => {
+		registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		const result = registerUser(db, { username: 'bob', passwordHash: 'x', requireInvite: false });
+		expect(result).toEqual({ ok: false, error: 'invite_required' });
 	});
 });
 

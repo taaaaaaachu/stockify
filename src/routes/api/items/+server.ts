@@ -2,17 +2,12 @@ import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
 import { requireHousehold } from '$lib/server/apiGuard';
+import { parseNonNegativeNumber } from '$lib/server/inputValidation';
 import type { RequestHandler } from './$types';
 
 function str(v: unknown): string {
 	return typeof v === 'string' ? v.trim() : '';
 }
-function numOrNull(v: unknown): number | null {
-	if (v === null || v === undefined || v === '') return null;
-	const n = Number(v);
-	return Number.isFinite(n) ? n : null;
-}
-
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const { householdId } = requireHousehold(locals);
 	const body = await request.json().catch(() => null);
@@ -24,8 +19,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		name,
 		unit,
 		category: str(body?.category) || null,
-		leadTimeDays: numOrNull(body?.leadTimeDays),
-		provisionalDaysToDeplete: numOrNull(body?.provisionalDaysToDeplete)
+		leadTimeDays: parseNonNegativeNumber(body?.leadTimeDays),
+		provisionalDaysToDeplete: parseNonNegativeNumber(body?.provisionalDaysToDeplete)
 	});
 	return json(item, { status: 201 });
 };

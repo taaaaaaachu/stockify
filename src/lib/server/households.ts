@@ -214,8 +214,14 @@ export type RegisterResult =
 	| { ok: true; user: UserRow; householdId: string }
 	| {
 			ok: false;
-			error: 'invite_invalid' | 'invite_expired' | 'invite_used' | 'invite_revoked' | 'username_taken';
-	  };
+			error:
+				| 'invite_invalid'
+				| 'invite_expired'
+				| 'invite_used'
+				| 'invite_revoked'
+				| 'invite_required'
+				| 'username_taken';
+		};
 
 /**
  * ユーザーを作成する。
@@ -235,8 +241,7 @@ export function registerUser(
 	}
 ): RegisterResult {
 	const now = Date.now();
-	try {
-		return db.transaction((tx): RegisterResult => {
+	return db.transaction((tx): RegisterResult => {
 			let targetHouseholdId: string;
 			let invite: InviteRow | undefined;
 
@@ -254,6 +259,8 @@ export function registerUser(
 				}
 				targetHouseholdId = invite.householdId;
 			} else {
+				// 呼び出し側の事前確認は競合しうるため、トランザクション内でも再確認する。
+				if (countUsers(tx) > 0) return { ok: false, error: 'invite_required' };
 				targetHouseholdId = newId();
 			}
 
@@ -267,8 +274,10 @@ export function registerUser(
 			};
 			try {
 				tx.insert(users).values(user).run();
-			} catch {
-				return { ok: false, error: 'username_taken' };
+			} catch (cause) {
+				if ((cause as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE')
+					return { ok: false, error: 'username_taken' };
+				throw cause;
 			}
 
 			if (params.requireInvite && invite) {
@@ -308,8 +317,5 @@ export function registerUser(
 			}
 
 			return { ok: true, user, householdId: targetHouseholdId };
-		});
-	} catch {
-		return { ok: false, error: 'username_taken' };
-	}
+	});
 }
