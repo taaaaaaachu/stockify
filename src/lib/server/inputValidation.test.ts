@@ -21,6 +21,8 @@ describe('入力検証', () => {
 		expect(parseFiniteNumber(false)).toBeNull();
 		expect(parseFiniteNumber(null)).toBeNull();
 		expect(parseFiniteNumber('')).toBeNull();
+		expect(parseNonNegativeNumber('   ')).toBeNull();
+		expect(parseFiniteNumber('\t')).toBeNull();
 		expect(parseFiniteNumber('123')).toBe(123);
 	});
 

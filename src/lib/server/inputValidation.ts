@@ -4,7 +4,7 @@ const MAX_IMPORT_ITEMS = 10_000;
 const MAX_IMPORT_CHILDREN = 100_000;
 
 export function parseNonNegativeNumber(value: unknown): number | null {
-	if (value === null || value === undefined || value === '') return null;
+	if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
 	if (typeof value === 'boolean') return null;
 	const number = Number(value);
 	return Number.isFinite(number) && number >= 0 ? number : null;
@@ -17,7 +17,7 @@ export function parsePositiveNumber(value: unknown): number | null {
 }
 
 export function parseFiniteNumber(value: unknown): number | null {
-	if (value === null || value === undefined || value === '') return null;
+	if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
 	if (typeof value === 'boolean') return null;
 	const number = Number(value);
 	return Number.isFinite(number) ? number : null;
