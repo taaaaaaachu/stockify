@@ -203,6 +203,14 @@ describe('アカウント画面の世帯情報', () => {
 		expect(listPendingOwnershipTransfers(db, 'unknown-user')).toEqual([]);
 		expect(listHouseholdSummaries(db)).toEqual([]);
 	});
+
+	it('世帯サマリーは所属数とowner数を集計する', () => {
+		const result = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		if (!result.ok) throw new Error('setup failed');
+		expect(listHouseholdSummaries(db)).toEqual([
+			expect.objectContaining({ name: '自宅', memberCount: 1, ownerCount: 1, itemCount: 0, activeInviteCount: 0 })
+		]);
+	});
 });
 
 describe('inviteState', () => {

@@ -1,4 +1,4 @@
-import { and, eq, desc, isNull, sql } from 'drizzle-orm';
+import { and, eq, desc, isNull, or, gt, count } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { randomBytes } from 'node:crypto';
 import type { Db } from './db';
@@ -8,6 +8,7 @@ import {
 	memberships,
 	ownershipTransfers,
 	invites,
+	stockItems,
 	type UserRow,
 	type HouseholdRow,
 	type InviteRow,
@@ -205,15 +206,42 @@ export interface HouseholdSummary {
 
 /** super_admin向け。所属有無に関係なくメタデータだけを返す。 */
 export function listHouseholdSummaries(db: Db): HouseholdSummary[] {
-	return db.select({
-		id: households.id,
-		name: households.name,
-		createdAt: households.createdAt,
-		memberCount: sql<number>`(select count(*) from memberships where memberships.household_id = ${households.id})`,
-		ownerCount: sql<number>`(select count(*) from memberships where memberships.household_id = ${households.id} and memberships.role = 'owner')`,
-		itemCount: sql<number>`(select count(*) from stock_items where stock_items.household_id = ${households.id})`,
-		activeInviteCount: sql<number>`(select count(*) from invites where invites.household_id = ${households.id} and invites.used_by is null and invites.revoked_at is null and (invites.expires_at is null or invites.expires_at > ${Date.now()}))`
-	}).from(households).orderBy(households.createdAt).all();
+	const now = Date.now();
+	return db
+		.select({ id: households.id, name: households.name, createdAt: households.createdAt })
+		.from(households)
+		.orderBy(households.createdAt)
+		.all()
+		.map((household) => ({
+			...household,
+			memberCount: db
+				.select({ value: count() })
+				.from(memberships)
+				.where(eq(memberships.householdId, household.id))
+				.get()?.value ?? 0,
+			ownerCount: db
+				.select({ value: count() })
+				.from(memberships)
+				.where(and(eq(memberships.householdId, household.id), eq(memberships.role, 'owner')))
+				.get()?.value ?? 0,
+			itemCount: db
+				.select({ value: count() })
+				.from(stockItems)
+				.where(eq(stockItems.householdId, household.id))
+				.get()?.value ?? 0,
+			activeInviteCount: db
+				.select({ value: count() })
+				.from(invites)
+				.where(
+					and(
+						eq(invites.householdId, household.id),
+						isNull(invites.usedBy),
+						isNull(invites.revokedAt),
+						or(isNull(invites.expiresAt), gt(invites.expiresAt, now))
+					)
+				)
+				.get()?.value ?? 0
+		}));
 }
 
 /** super_adminが世帯を完全削除する。関連データは外部キーのcascadeに任せる。 */
