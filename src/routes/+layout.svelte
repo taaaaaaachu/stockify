@@ -6,6 +6,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { store } from '$lib/app/store.svelte';
+	import PasswordChangeForm from '$lib/components/PasswordChangeForm.svelte';
 
 	let { data, children } = $props();
 
@@ -45,7 +46,8 @@
 	}
 </script>
 
-<header
+{#if !data.user?.mustChangePassword}
+	<header
 	style="border-bottom:1px solid var(--border); background:var(--card);
 	       position:sticky; top:0; z-index:10;"
 >
@@ -94,8 +96,13 @@
 			{/if}
 		</div>
 	</div>
-</header>
+	</header>
+{/if}
 
 <main style="max-width:48rem; margin:0 auto; padding:1rem;">
-	{@render children()}
+	{#if data.user?.mustChangePassword}
+		<PasswordChangeForm forced={true} />
+	{:else}
+		{@render children()}
+	{/if}
 </main>

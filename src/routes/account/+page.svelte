@@ -5,6 +5,7 @@
 	import { IndexedDbRepository } from '$lib/repo/indexeddb';
 	import { formatDate } from '$lib/format';
 	import { buildInviteRequestBody } from '$lib/app/inviteRequest';
+	import PasswordChangeForm from '$lib/components/PasswordChangeForm.svelte';
 
 	let { data } = $props();
 
@@ -12,11 +13,6 @@
 	let inviteExpiry = $state('');
 	let lastCode = $state<string | null>(null);
 	let busy = $state(false);
-	let currentPassword = $state('');
-	let newPassword = $state('');
-	let confirmPassword = $state('');
-	let passwordError = $state('');
-	let passwordMessage = $state('');
 	type AdminUser = { id: string; username: string };
 	let adminUsers = $state<AdminUser[]>([]);
 	let resetResult = $state<{ username: string; password: string } | null>(null);
@@ -51,32 +47,6 @@
 				body: JSON.stringify({ name: newHousehold.trim() })
 			});
 			newHousehold = '';
-			await invalidateAll();
-		} finally {
-			busy = false;
-		}
-	}
-
-	async function changeOwnPassword(e: SubmitEvent) {
-		e.preventDefault();
-		passwordError = '';
-		passwordMessage = '';
-		busy = true;
-		try {
-			const res = await fetch('/api/account/password', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
-			});
-			const result = await res.json().catch(() => ({}));
-			if (!res.ok) {
-				passwordError = result.message ?? 'パスワードの変更に失敗しました。';
-				return;
-			}
-			currentPassword = '';
-			newPassword = '';
-			confirmPassword = '';
-			passwordMessage = 'パスワードを変更しました。';
 			await invalidateAll();
 		} finally {
 			busy = false;
@@ -166,22 +136,7 @@
 	{/if}
 </div>
 
-<div style={section}>
-	<h2 style="margin:0 0 0.5rem; font-size:1rem;">パスワード変更</h2>
-	{#if store.user?.mustChangePassword}
-		<p style="color:var(--warn); margin:0 0 0.6rem;">管理者が発行した一時パスワードです。続けるには新しいパスワードへ変更してください。</p>
-	{/if}
-	<form onsubmit={changeOwnPassword} style="display:flex; flex-direction:column; gap:0.5rem; max-width:28rem;">
-		{#if !store.user?.mustChangePassword}
-			<input bind:value={currentPassword} type="password" placeholder="現在のパスワード" autocomplete="current-password" required />
-		{/if}
-		<input bind:value={newPassword} type="password" placeholder="新しいパスワード(8〜256文字)" autocomplete="new-password" minlength="8" maxlength="256" required />
-		<input bind:value={confirmPassword} type="password" placeholder="新しいパスワード(確認)" autocomplete="new-password" minlength="8" maxlength="256" required />
-		<button type="submit" disabled={busy} style="align-self:flex-start; background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;">パスワードを変更</button>
-	</form>
-	{#if passwordError}<p style="color:var(--danger); margin:0.5rem 0 0;">{passwordError}</p>{/if}
-	{#if passwordMessage}<p style="color:var(--ok); margin:0.5rem 0 0;">{passwordMessage}</p>{/if}
-</div>
+<PasswordChangeForm />
 
 <div style={section}>
 	<h2 style="margin:0 0 0.5rem; font-size:1rem;">所属している世帯</h2>

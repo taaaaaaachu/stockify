@@ -23,9 +23,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 				const pathname = event.url.pathname;
 				const allowed =
 					pathname === '/account' ||
+					pathname === '/account/__data.json' ||
 					pathname === '/api/account/password' ||
 					pathname === '/logout' ||
-					pathname.startsWith('/_app/');
+					pathname.startsWith('/_app/') ||
+					pathname === '/manifest.webmanifest' ||
+					pathname === '/service-worker.js' ||
+					pathname.startsWith('/icon') ||
+					pathname.startsWith('/apple-touch-icon');
 				if (!allowed) {
 					if (pathname.startsWith('/api/'))
 						return new Response(JSON.stringify({ message: 'パスワード変更が必要です。' }), {
