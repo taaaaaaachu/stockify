@@ -99,7 +99,11 @@
 	<form onsubmit={add} style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:end;">
 		<label style="flex:1; min-width:8rem;"><span style="font-size:0.75rem;">表示名(任意)</span><input bind:value={label} maxlength="100" placeholder="Amazon" /></label>
 		<label style="flex:2; min-width:12rem;"><span style="font-size:0.75rem;">URL</span><input bind:value={url} maxlength="2048" type="url" placeholder="https://..." required /></label>
-		<button type="submit">追加</button>
+		<button
+			type="submit"
+			style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.5rem 0.8rem; cursor:pointer;"
+			>追加</button
+		>
 	</form>
 	{#if error}<p style="color:var(--danger); font-size:0.85rem; margin:0;">{error}</p>{/if}
 </div>

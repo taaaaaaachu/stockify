@@ -143,7 +143,12 @@
 				{#if productLinks.length > 1}<button type="button" onclick={() => (productLinks = productLinks.filter((_, i) => i !== index))}>削除</button>{/if}
 			</div>
 		{/each}
-		<button type="button" onclick={() => (productLinks = [...productLinks, { label: '', url: '' }])}>＋ 商品リンクを追加</button>
+		<button
+			type="button"
+			onclick={() => (productLinks = [...productLinks, { label: '', url: '' }])}
+			style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.7rem; cursor:pointer;"
+			>＋ 商品リンクを追加</button
+		>
 		<small style="display:block; color:var(--muted); margin-top:0.4rem;">空欄の行は無視されます。http/https のみ登録できます。</small>
 	</fieldset>
 
