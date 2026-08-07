@@ -8,11 +8,13 @@ import {
 	ranouts,
 	adjustments,
 	subscriptions,
+	productLinks,
 	type StockItemRow,
 	type PurchaseRow,
 	type RanoutRow,
 	type AdjustmentRow,
 	type SubscriptionRow
+	,	type ProductLinkRow
 } from './db/schema';
 import type {
 	Purchase,
@@ -20,6 +22,7 @@ import type {
 	RemainingAdjustment,
 	StockItem,
 	Subscription
+	, ProductLink
 } from '$lib/types';
 import type {
 	AdjustmentInput,
@@ -30,6 +33,7 @@ import type {
 	Snapshot,
 	StockItemInput,
 	SubscriptionInput
+	, ProductLinkInput
 } from '$lib/repo/types';
 import { generateDueDeliveries } from '$lib/domain/subscription';
 
@@ -69,6 +73,13 @@ const toSubscription = (r: SubscriptionRow): Subscription => ({
 	quantityPerDelivery: r.quantityPerDelivery,
 	paused: r.paused
 });
+const toProductLink = (r: ProductLinkRow): ProductLink => ({
+	id: r.id,
+	itemId: r.itemId,
+	label: r.label,
+	url: r.url,
+	position: r.position
+});
 
 // --- 所有チェック ---
 
@@ -85,7 +96,7 @@ export function itemInHousehold(db: Db, householdId: string, itemId: string): bo
 function childItemId(
 	db: Db,
 	householdId: string,
-	table: typeof purchases | typeof ranouts | typeof adjustments | typeof subscriptions,
+	table: typeof purchases | typeof ranouts | typeof adjustments | typeof subscriptions | typeof productLinks,
 	id: string
 ): string | null {
 	const row = db
@@ -169,6 +180,67 @@ export function deleteItem(db: Db, householdId: string, id: string): boolean {
 		.where(and(eq(stockItems.id, id), eq(stockItems.householdId, householdId)))
 		.run();
 	return res.changes > 0;
+}
+
+// --- 商品リンク ---
+
+export function listProductLinks(db: Db, householdId: string, itemId: string): ProductLink[] | null {
+	if (!itemInHousehold(db, householdId, itemId)) return null;
+	return db.select().from(productLinks).where(eq(productLinks.itemId, itemId)).all().sort((a, b) => a.position - b.position).map(toProductLink);
+}
+
+export function getProductLink(db: Db, householdId: string, id: string): ProductLink | null {
+	const itemId = childItemId(db, householdId, productLinks, id);
+	if (!itemId) return null;
+	const row = db.select().from(productLinks).where(eq(productLinks.id, id)).get();
+	return row ? toProductLink(row) : null;
+}
+
+export function createProductLink(db: Db, householdId: string, input: ProductLinkInput): ProductLink | null {
+	if (!itemInHousehold(db, householdId, input.itemId)) return null;
+	const links = listProductLinks(db, householdId, input.itemId) ?? [];
+	if (links.some((link) => link.url === input.url)) throw new Error('同じURLの商品リンクは登録できません。');
+	const row: ProductLinkRow = { id: randomUUID(), ...input, position: links.length };
+	db.insert(productLinks).values(row).run();
+	return toProductLink(row);
+}
+
+export function updateProductLink(db: Db, householdId: string, id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>): ProductLink | null {
+	const itemId = childItemId(db, householdId, productLinks, id);
+	if (!itemId) return null;
+	const existing = db.select().from(productLinks).where(eq(productLinks.id, id)).get();
+	if (!existing) return null;
+	if (patch.url && db.select().from(productLinks).where(and(eq(productLinks.itemId, itemId), eq(productLinks.url, patch.url))).all().some((link) => link.id !== id))
+		throw new Error('同じURLの商品リンクは登録できません。');
+	const updated = { ...existing, ...patch };
+	db.update(productLinks).set(updated).where(eq(productLinks.id, id)).run();
+	return toProductLink(updated);
+}
+
+export function deleteProductLink(db: Db, householdId: string, id: string): boolean {
+	const itemId = childItemId(db, householdId, productLinks, id);
+	if (!itemId) return false;
+	db.transaction((tx) => {
+		tx.delete(productLinks).where(eq(productLinks.id, id)).run();
+		const rest = tx.select().from(productLinks).where(eq(productLinks.itemId, itemId)).all().sort((a, b) => a.position - b.position);
+		for (const [position, link] of rest.entries()) tx.update(productLinks).set({ position }).where(eq(productLinks.id, link.id)).run();
+	});
+	return true;
+}
+
+export function moveProductLink(db: Db, householdId: string, id: string, direction: 'up' | 'down'): boolean {
+	const itemId = childItemId(db, householdId, productLinks, id);
+	if (!itemId) return false;
+	const links = db.select().from(productLinks).where(eq(productLinks.itemId, itemId)).all().sort((a, b) => a.position - b.position);
+	const index = links.findIndex((link) => link.id === id);
+	const otherIndex = direction === 'up' ? index - 1 : index + 1;
+	if (index < 0 || otherIndex < 0 || otherIndex >= links.length) return true;
+	const other = links[otherIndex];
+	db.transaction((tx) => {
+		tx.update(productLinks).set({ position: other.position }).where(eq(productLinks.id, id)).run();
+		tx.update(productLinks).set({ position: links[index].position }).where(eq(productLinks.id, other.id)).run();
+	});
+	return true;
 }
 
 // --- 購入 ---
@@ -278,7 +350,8 @@ export function listBundles(db: Db, householdId: string): ItemBundle[] {
 	const items = db.select().from(stockItems).where(eq(stockItems.householdId, householdId)).all();
 	const ids = items.map((i) => i.id);
 	if (ids.length === 0) return [];
-	const [ps, rs, as, ss] = [
+	const [pls, ps, rs, as, ss] = [
+		db.select().from(productLinks).where(inArray(productLinks.itemId, ids)).all(),
 		db.select().from(purchases).where(inArray(purchases.itemId, ids)).all(),
 		db.select().from(ranouts).where(inArray(ranouts.itemId, ids)).all(),
 		db.select().from(adjustments).where(inArray(adjustments.itemId, ids)).all(),
@@ -286,6 +359,7 @@ export function listBundles(db: Db, householdId: string): ItemBundle[] {
 	];
 	return items.map((item) => ({
 		item: toItem(item),
+		productLinks: pls.filter((p) => p.itemId === item.id).sort((a, b) => a.position - b.position).map(toProductLink),
 		purchases: ps.filter((p) => p.itemId === item.id).map(toPurchase),
 		ranOutEvents: rs.filter((r) => r.itemId === item.id).map(toRanout),
 		adjustments: as.filter((a) => a.itemId === item.id).map(toAdjustment),
@@ -299,6 +373,7 @@ export function getBundle(db: Db, householdId: string, itemId: string): ItemBund
 	if (!item) return null;
 	return {
 		item: toItem(item),
+		productLinks: db.select().from(productLinks).where(eq(productLinks.itemId, itemId)).all().sort((a, b) => a.position - b.position).map(toProductLink),
 		purchases: db.select().from(purchases).where(eq(purchases.itemId, itemId)).all().map(toPurchase),
 		ranOutEvents: db.select().from(ranouts).where(eq(ranouts.itemId, itemId)).all().map(toRanout),
 		adjustments: db
@@ -321,6 +396,7 @@ export function exportAll(db: Db, householdId: string): Snapshot {
 	return {
 		settings: getSettings(db, householdId),
 		items: bundles.map((b) => b.item),
+		productLinks: bundles.flatMap((b) => b.productLinks ?? []),
 		purchases: bundles.flatMap((b) => b.purchases),
 		ranOutEvents: bundles.flatMap((b) => b.ranOutEvents),
 		adjustments: bundles.flatMap((b) => b.adjustments),
@@ -355,6 +431,11 @@ export function importSnapshot(
 				})
 				.run();
 			itemCount++;
+		}
+		for (const link of snapshot.productLinks ?? []) {
+			const itemId = idMap.get(link.itemId);
+			if (!itemId) continue;
+			tx.insert(productLinks).values({ id: randomUUID(), itemId, label: link.label, url: link.url, position: link.position }).run();
 		}
 		for (const p of snapshot.purchases) {
 			const itemId = idMap.get(p.itemId);

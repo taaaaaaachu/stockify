@@ -1,5 +1,6 @@
 import type {
 	Purchase,
+	ProductLink,
 	RanOutEvent,
 	RemainingAdjustment,
 	StockItem,
@@ -19,6 +20,12 @@ export interface StockItemInput {
 	category: string | null;
 	leadTimeDays: number | null;
 	provisionalDaysToDeplete: number | null;
+}
+
+export interface ProductLinkInput {
+	itemId: string;
+	label: string;
+	url: string;
 }
 
 /** 新規購入の入力(id はリポジトリが採番)。 */
@@ -56,6 +63,7 @@ export interface SubscriptionInput {
 /** 1 品目とその配下データをまとめたバンドル。ダッシュボード集計や取り込みで使う。 */
 export interface ItemBundle {
 	item: StockItem;
+	productLinks?: ProductLink[];
 	purchases: Purchase[];
 	ranOutEvents: RanOutEvent[];
 	adjustments: RemainingAdjustment[];
@@ -66,6 +74,7 @@ export interface ItemBundle {
 export interface Snapshot {
 	settings: AppSettings;
 	items: StockItem[];
+	productLinks?: ProductLink[];
 	purchases: Purchase[];
 	ranOutEvents: RanOutEvent[];
 	adjustments: RemainingAdjustment[];
@@ -92,6 +101,12 @@ export interface Repository {
 	updateItem(id: string, patch: Partial<StockItemInput>): Promise<StockItem>;
 	/** 品目を削除する。配下の購入・使い切り・補正・定期便もカスケード削除する。 */
 	deleteItem(id: string): Promise<void>;
+
+	listProductLinks(itemId: string): Promise<ProductLink[]>;
+	createProductLink(input: ProductLinkInput): Promise<ProductLink>;
+	updateProductLink(id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>): Promise<ProductLink>;
+	deleteProductLink(id: string): Promise<void>;
+	moveProductLink(id: string, direction: 'up' | 'down'): Promise<void>;
 
 	listPurchases(itemId: string): Promise<Purchase[]>;
 	createPurchase(input: PurchaseInput): Promise<Purchase>;

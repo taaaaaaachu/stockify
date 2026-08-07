@@ -5,6 +5,7 @@
 	import { formatDepletion, formatQuantity } from '$lib/format';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import RemainingBar from '$lib/components/RemainingBar.svelte';
+	import { productLinkLabel } from '$lib/productLinks';
 
 	const rows = $derived(buildDashboard(store.bundles, store.settings, store.now));
 </script>
@@ -30,13 +31,12 @@
 	<ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.6rem;">
 		{#each rows as row (row.item.id)}
 			<li>
-				<a
-					href={resolve('/items/[id]', { id: row.item.id })}
-					style="display:block; text-decoration:none; color:inherit; background:var(--card);
+				<div
+					style="display:block; background:var(--card);
 					       border:1px solid var(--border); border-radius:0.6rem; padding:0.8rem;"
 				>
 					<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
-						<span style="font-weight:600;">{row.item.name}</span>
+						<a href={resolve('/items/[id]', { id: row.item.id })} style="font-weight:600; color:inherit; text-decoration:none;">{row.item.name}</a>
 						{#if row.item.category}
 							<span style="font-size:0.75rem; color:var(--muted);">{row.item.category}</span>
 						{/if}
@@ -48,6 +48,10 @@
 						{/if}
 						<span style="margin-left:auto;"><StatusBadge status={row.status} /></span>
 					</div>
+					{#if row.defaultProductLink}
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={row.defaultProductLink.url} target="_blank" rel="noopener noreferrer" style="display:inline-block; color:var(--accent); font-size:0.85rem; margin-bottom:0.4rem;">購入先: {productLinkLabel(row.defaultProductLink)}</a>
+					{/if}
 					<RemainingBar fraction={row.remainingFraction} status={row.status} />
 					<div
 						style="display:flex; justify-content:space-between; margin-top:0.4rem;
@@ -56,7 +60,7 @@
 						<span>残量 {formatQuantity(row.estimate.remainingClamped, row.item.unit)}</span>
 						<span>枯渇 {formatDepletion(row.estimate.depletionAt, store.now)}</span>
 					</div>
-				</a>
+				</div>
 			</li>
 		{/each}
 	</ul>

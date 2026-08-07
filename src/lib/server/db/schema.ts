@@ -133,6 +133,21 @@ export const stockItems = sqliteTable(
 	(t) => [index('stock_items_household_idx').on(t.householdId)]
 );
 
+/** ストック品目から購入先へ移動する商品リンク。 */
+export const productLinks = sqliteTable(
+	'product_links',
+	{
+		id: text('id').primaryKey(),
+		itemId: text('item_id')
+			.notNull()
+			.references(() => stockItems.id, { onDelete: 'cascade' }),
+		label: text('label').notNull().default(''),
+		url: text('url').notNull(),
+		position: integer('position').notNull()
+	},
+	(t) => [index('product_links_item_idx').on(t.itemId), unique('product_links_item_url_uq').on(t.itemId, t.url)]
+);
+
 /** 購入イベント。 */
 export const purchases = sqliteTable(
 	'purchases',
@@ -223,6 +238,7 @@ export type MembershipRow = typeof memberships.$inferSelect;
 export type OwnershipTransferRow = typeof ownershipTransfers.$inferSelect;
 export type InviteRow = typeof invites.$inferSelect;
 export type StockItemRow = typeof stockItems.$inferSelect;
+export type ProductLinkRow = typeof productLinks.$inferSelect;
 export type PurchaseRow = typeof purchases.$inferSelect;
 export type RanoutRow = typeof ranouts.$inferSelect;
 export type AdjustmentRow = typeof adjustments.$inferSelect;

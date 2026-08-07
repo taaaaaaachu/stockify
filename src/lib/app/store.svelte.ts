@@ -10,7 +10,7 @@ import type {
 	SubscriptionInput
 } from '$lib/repo/types';
 import type { InstanceRole, HouseholdRole } from '$lib/rbac';
-import type { Subscription } from '$lib/types';
+import type { ProductLink, Subscription } from '$lib/types';
 import { nextDeliveryAfterSkip, isAcceptableNextDelivery } from '$lib/domain/subscription';
 
 export interface AuthUser {
@@ -124,6 +124,23 @@ class Store {
 	}
 	async removeItem(id: string): Promise<void> {
 		await this.repo.deleteItem(id);
+		await this.reload();
+	}
+
+	async addProductLink(input: { itemId: string; label: string; url: string }): Promise<void> {
+		await this.repo.createProductLink(input);
+		await this.reload();
+	}
+	async editProductLink(id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>): Promise<void> {
+		await this.repo.updateProductLink(id, patch);
+		await this.reload();
+	}
+	async removeProductLink(id: string): Promise<void> {
+		await this.repo.deleteProductLink(id);
+		await this.reload();
+	}
+	async moveProductLink(id: string, direction: 'up' | 'down'): Promise<void> {
+		await this.repo.moveProductLink(id, direction);
 		await this.reload();
 	}
 

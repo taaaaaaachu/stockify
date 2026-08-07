@@ -17,6 +17,7 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import RemainingBar from '$lib/components/RemainingBar.svelte';
 	import HistoryChart from '$lib/components/HistoryChart.svelte';
+	import ProductLinksEditor from '$lib/components/ProductLinksEditor.svelte';
 
 	const id = $derived(page.params.id ?? '');
 
@@ -476,11 +477,13 @@
 				</div>
 			</form>
 		{:else}
-			<div style="font-size:0.9rem; color:var(--muted); margin-top:0.4rem;">
+		<div style="font-size:0.9rem; color:var(--muted); margin-top:0.4rem;">
 				単位 {bundle.item.unit} ・ リードタイム {bundle.item.leadTimeDays === null
 					? `既定(${store.settings.defaultLeadTimeDays}日)`
 					: `${bundle.item.leadTimeDays}日`}
-			</div>
+		</div>
+		<h3 style="font-size:0.95rem; margin:0.8rem 0 0;">商品リンク</h3>
+		<ProductLinksEditor itemId={id} links={bundle.productLinks ?? []} />
 		{/if}
 		<button
 			onclick={removeItem}

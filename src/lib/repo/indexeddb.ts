@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
 	Purchase,
+	ProductLink,
 	RanOutEvent,
 	RemainingAdjustment,
 	StockItem,
@@ -15,11 +16,12 @@ import type {
 	Repository,
 	Snapshot,
 	StockItemInput,
+	ProductLinkInput,
 	SubscriptionInput
 } from './types';
 
 const DB_NAME = 'stockify';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SETTINGS_KEY = 'app';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -33,6 +35,7 @@ interface StockifyDB extends DBSchema {
 	ranouts: { key: string; value: RanOutEvent; indexes: { by_item: string } };
 	adjustments: { key: string; value: RemainingAdjustment; indexes: { by_item: string } };
 	subscriptions: { key: string; value: Subscription; indexes: { by_item: string } };
+	productLinks: { key: string; value: ProductLink; indexes: { by_item: string } };
 }
 
 function newId(): string {
@@ -49,14 +52,13 @@ export class IndexedDbRepository implements Repository {
 	constructor() {
 		this.#dbPromise = openDB<StockifyDB>(DB_NAME, DB_VERSION, {
 			upgrade(db) {
-				db.createObjectStore('settings');
-				db.createObjectStore('items', { keyPath: 'id' });
-				db.createObjectStore('purchases', { keyPath: 'id' }).createIndex('by_item', 'itemId');
-				db.createObjectStore('ranouts', { keyPath: 'id' }).createIndex('by_item', 'itemId');
-				db.createObjectStore('adjustments', { keyPath: 'id' }).createIndex('by_item', 'itemId');
-				db
-					.createObjectStore('subscriptions', { keyPath: 'id' })
-					.createIndex('by_item', 'itemId');
+				if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
+				if (!db.objectStoreNames.contains('items')) db.createObjectStore('items', { keyPath: 'id' });
+				if (!db.objectStoreNames.contains('purchases')) db.createObjectStore('purchases', { keyPath: 'id' }).createIndex('by_item', 'itemId');
+				if (!db.objectStoreNames.contains('ranouts')) db.createObjectStore('ranouts', { keyPath: 'id' }).createIndex('by_item', 'itemId');
+				if (!db.objectStoreNames.contains('adjustments')) db.createObjectStore('adjustments', { keyPath: 'id' }).createIndex('by_item', 'itemId');
+				if (!db.objectStoreNames.contains('subscriptions')) db.createObjectStore('subscriptions', { keyPath: 'id' }).createIndex('by_item', 'itemId');
+				if (!db.objectStoreNames.contains('productLinks')) db.createObjectStore('productLinks', { keyPath: 'id' }).createIndex('by_item', 'itemId');
 			}
 		});
 	}
@@ -109,15 +111,64 @@ export class IndexedDbRepository implements Repository {
 	async deleteItem(id: string): Promise<void> {
 		const db = await this.#dbPromise;
 		const tx = db.transaction(
-			['items', 'purchases', 'ranouts', 'adjustments', 'subscriptions'],
+			['items', 'purchases', 'ranouts', 'adjustments', 'subscriptions', 'productLinks'],
 			'readwrite'
 		);
 		await tx.objectStore('items').delete(id);
-		for (const store of ['purchases', 'ranouts', 'adjustments', 'subscriptions'] as const) {
+		for (const store of ['purchases', 'ranouts', 'adjustments', 'subscriptions', 'productLinks'] as const) {
 			const keys = await tx.objectStore(store).index('by_item').getAllKeys(id);
 			for (const key of keys) await tx.objectStore(store).delete(key);
 		}
 		await tx.done;
+	}
+
+	async listProductLinks(itemId: string): Promise<ProductLink[]> {
+		const db = await this.#dbPromise;
+		return (await db.getAllFromIndex('productLinks', 'by_item', itemId)).sort((a, b) => a.position - b.position);
+	}
+
+	async createProductLink(input: ProductLinkInput): Promise<ProductLink> {
+		const db = await this.#dbPromise;
+		const links = await this.listProductLinks(input.itemId);
+		if (links.some((link) => link.url === input.url)) throw new Error('同じURLの商品リンクは登録できません。');
+		const link: ProductLink = { id: newId(), ...input, position: links.length };
+		await db.put('productLinks', link);
+		return link;
+	}
+
+	async updateProductLink(id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>): Promise<ProductLink> {
+		const db = await this.#dbPromise;
+		const existing = await db.get('productLinks', id);
+		if (!existing) throw new Error(`商品リンクが見つかりません: ${id}`);
+		if (patch.url && (await this.listProductLinks(existing.itemId)).some((link) => link.id !== id && link.url === patch.url))
+			throw new Error('同じURLの商品リンクは登録できません。');
+		const updated = { ...existing, ...patch };
+		await db.put('productLinks', updated);
+		return updated;
+	}
+
+	async deleteProductLink(id: string): Promise<void> {
+		const db = await this.#dbPromise;
+		const existing = await db.get('productLinks', id);
+		if (!existing) return;
+		const links = await this.listProductLinks(existing.itemId);
+		await db.delete('productLinks', id);
+		for (const [position, link] of links.filter((link) => link.id !== id).entries()) {
+			if (link.position !== position) await db.put('productLinks', { ...link, position });
+		}
+	}
+
+	async moveProductLink(id: string, direction: 'up' | 'down'): Promise<void> {
+		const db = await this.#dbPromise;
+		const link = await db.get('productLinks', id);
+		if (!link) return;
+		const links = await this.listProductLinks(link.itemId);
+		const index = links.findIndex((entry) => entry.id === id);
+		const otherIndex = direction === 'up' ? index - 1 : index + 1;
+		if (index < 0 || otherIndex < 0 || otherIndex >= links.length) return;
+		const other = links[otherIndex];
+		await db.put('productLinks', { ...link, position: other.position });
+		await db.put('productLinks', { ...other, position: link.position });
 	}
 
 	async listPurchases(itemId: string): Promise<Purchase[]> {
@@ -216,19 +267,21 @@ export class IndexedDbRepository implements Repository {
 		const db = await this.#dbPromise;
 		const item = await db.get('items', itemId);
 		if (!item) return null;
-		const [purchases, ranOutEvents, adjustments, subscriptions] = await Promise.all([
+		const [productLinks, purchases, ranOutEvents, adjustments, subscriptions] = await Promise.all([
+			db.getAllFromIndex('productLinks', 'by_item', itemId),
 			db.getAllFromIndex('purchases', 'by_item', itemId),
 			db.getAllFromIndex('ranouts', 'by_item', itemId),
 			db.getAllFromIndex('adjustments', 'by_item', itemId),
 			db.getAllFromIndex('subscriptions', 'by_item', itemId)
 		]);
-		return { item, purchases, ranOutEvents, adjustments, subscriptions };
+		return { item, productLinks: productLinks.sort((a, b) => a.position - b.position), purchases, ranOutEvents, adjustments, subscriptions };
 	}
 
 	async listBundles(): Promise<ItemBundle[]> {
 		const db = await this.#dbPromise;
-		const [items, purchases, ranOutEvents, adjustments, subscriptions] = await Promise.all([
+		const [items, productLinks, purchases, ranOutEvents, adjustments, subscriptions] = await Promise.all([
 			db.getAll('items'),
+			db.getAll('productLinks'),
 			db.getAll('purchases'),
 			db.getAll('ranouts'),
 			db.getAll('adjustments'),
@@ -236,6 +289,7 @@ export class IndexedDbRepository implements Repository {
 		]);
 		return items.map((item) => ({
 			item,
+			productLinks: productLinks.filter((link) => link.itemId === item.id).sort((a, b) => a.position - b.position),
 			purchases: purchases.filter((p) => p.itemId === item.id),
 			ranOutEvents: ranOutEvents.filter((e) => e.itemId === item.id),
 			adjustments: adjustments.filter((a) => a.itemId === item.id),
@@ -245,23 +299,24 @@ export class IndexedDbRepository implements Repository {
 
 	async exportAll(): Promise<Snapshot> {
 		const db = await this.#dbPromise;
-		const [settings, items, purchases, ranOutEvents, adjustments, subscriptions] =
+		const [settings, items, productLinks, purchases, ranOutEvents, adjustments, subscriptions] =
 			await Promise.all([
 				this.getSettings(),
 				db.getAll('items'),
+				db.getAll('productLinks'),
 				db.getAll('purchases'),
 				db.getAll('ranouts'),
 				db.getAll('adjustments'),
 				db.getAll('subscriptions')
 			]);
-		return { settings, items, purchases, ranOutEvents, adjustments, subscriptions };
+		return { settings, items, productLinks, purchases, ranOutEvents, adjustments, subscriptions };
 	}
 
 	/** ゲストデータを全消去する(会員データへ取り込んだ後などに使う)。 */
 	async clearAll(): Promise<void> {
 		const db = await this.#dbPromise;
 		const tx = db.transaction(
-			['settings', 'items', 'purchases', 'ranouts', 'adjustments', 'subscriptions'],
+			['settings', 'items', 'purchases', 'ranouts', 'adjustments', 'subscriptions', 'productLinks'],
 			'readwrite'
 		);
 		for (const store of [
@@ -271,6 +326,7 @@ export class IndexedDbRepository implements Repository {
 			'ranouts',
 			'adjustments',
 			'subscriptions'
+			, 'productLinks'
 		] as const) {
 			await tx.objectStore(store).clear();
 		}

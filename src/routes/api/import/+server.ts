@@ -14,6 +14,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const snapshot: Snapshot = {
 		settings: body.settings ?? { defaultLeadTimeDays: 7 },
 		items: body.items ?? [],
+		productLinks: body.productLinks ?? [],
 		purchases: body.purchases ?? [],
 		ranOutEvents: body.ranOutEvents ?? [],
 		adjustments: body.adjustments ?? [],

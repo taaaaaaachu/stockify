@@ -4,6 +4,7 @@
 	import { buildDashboard, shoppingList } from '$lib/domain/dashboard';
 	import { formatDepletion, formatQuantity } from '$lib/format';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import { productLinkLabel } from '$lib/productLinks';
 
 	const rows = $derived(shoppingList(buildDashboard(store.bundles, store.settings, store.now)));
 
@@ -54,6 +55,10 @@
 						>
 						<StatusBadge status={row.status} />
 					</div>
+					{#if row.defaultProductLink}
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={row.defaultProductLink.url} target="_blank" rel="noopener noreferrer" style="display:inline-block; color:var(--accent); font-size:0.85rem; margin-top:0.3rem;">購入先: {productLinkLabel(row.defaultProductLink)}</a>
+					{/if}
 					<div style="font-size:0.85rem; color:var(--muted); margin-top:0.2rem;">
 						残量 {formatQuantity(row.estimate.remainingClamped, row.item.unit)} ・ 枯渇 {formatDepletion(
 							row.estimate.depletionAt,

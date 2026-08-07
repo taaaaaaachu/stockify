@@ -1,6 +1,18 @@
 /** エンティティ ID(UUID 文字列)。 */
 export type ID = string;
 
+/** ストック品目から購入先へ移動する商品リンク。 */
+export interface ProductLink {
+	id: ID;
+	itemId: ID;
+	/** 任意の表示名。空欄ならURLのホスト名を表示する。 */
+	label: string;
+	/** http/https の商品ページURL。 */
+	url: string;
+	/** 品目内の表示順。0 が既定リンク。 */
+	position: number;
+}
+
 /**
  * ストック品目。在庫を管理したい対象そのもの(例: 食器用洗剤)。
  * 配下に購入・使い切り・残量補正がぶら下がり、そこから残量を推定する。

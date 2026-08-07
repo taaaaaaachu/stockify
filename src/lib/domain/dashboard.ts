@@ -1,4 +1,4 @@
-import type { StockItem } from '$lib/types';
+import type { ProductLink, StockItem } from '$lib/types';
 import type { AppSettings, ItemBundle } from '$lib/repo/types';
 import { estimate, estimateInputFromItem, MS_PER_DAY, type Estimate } from './estimate';
 
@@ -16,6 +16,7 @@ export type StockStatus =
 /** ダッシュボード 1 行分。 */
 export interface DashboardRow {
 	item: StockItem;
+	defaultProductLink: ProductLink | null;
 	estimate: Estimate;
 	/** 有効(一時停止でない)な定期便があるか。 */
 	hasActiveSubscription: boolean;
@@ -80,6 +81,7 @@ export function buildRow(bundle: ItemBundle, settings: AppSettings, now: number)
 
 	return {
 		item: bundle.item,
+		defaultProductLink: bundle.productLinks?.[0] ?? null,
 		estimate: est,
 		hasActiveSubscription: active,
 		status: statusOf(est, now),

@@ -1,5 +1,6 @@
 import type {
 	Purchase,
+	ProductLink,
 	RanOutEvent,
 	RemainingAdjustment,
 	StockItem,
@@ -10,6 +11,7 @@ import type {
 	AppSettings,
 	ItemBundle,
 	PurchaseInput,
+	ProductLinkInput,
 	RanOutInput,
 	Repository,
 	Snapshot,
@@ -103,6 +105,28 @@ export class ApiRepository implements Repository {
 	}
 	async deleteItem(id: string): Promise<void> {
 		await req<void>(`/api/items/${id}`, { method: 'DELETE' });
+		this.#invalidate();
+	}
+
+	async listProductLinks(itemId: string): Promise<ProductLink[]> {
+		return (await this.getBundle(itemId))?.productLinks ?? [];
+	}
+	async createProductLink(input: ProductLinkInput): Promise<ProductLink> {
+		const r = await req<ProductLink>('/api/product-links', { method: 'POST', body: JSON.stringify(input) });
+		this.#invalidate();
+		return r;
+	}
+	async updateProductLink(id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>): Promise<ProductLink> {
+		const r = await req<ProductLink>(`/api/product-links/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+		this.#invalidate();
+		return r;
+	}
+	async deleteProductLink(id: string): Promise<void> {
+		await req<void>(`/api/product-links/${id}`, { method: 'DELETE' });
+		this.#invalidate();
+	}
+	async moveProductLink(id: string, direction: 'up' | 'down'): Promise<void> {
+		await req(`/api/product-links/${id}/move`, { method: 'POST', body: JSON.stringify({ direction }) });
 		this.#invalidate();
 	}
 

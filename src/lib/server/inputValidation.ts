@@ -1,4 +1,5 @@
 import type { Snapshot } from '$lib/repo/types';
+import { normalizeProductLinkInput } from '$lib/productLinks';
 
 const MAX_IMPORT_ITEMS = 10_000;
 const MAX_IMPORT_CHILDREN = 100_000;
@@ -39,6 +40,7 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 		)
 	)
 		return false;
+	if (snapshot.productLinks !== undefined && (!Array.isArray(snapshot.productLinks) || snapshot.productLinks.length > MAX_IMPORT_CHILDREN)) return false;
 
 	if (
 		snapshot.items.some((value) => {
@@ -112,6 +114,24 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 				parsePositiveNumber(subscription.volumePerDelivery) === null ||
 				parsePositiveNumber(subscription.quantityPerDelivery) === null ||
 				typeof subscription.paused !== 'boolean'
+			);
+		}) ||
+		(snapshot.productLinks ?? []).some((value, index, links) => {
+			if (!value || typeof value !== 'object') return true;
+			const link = value as Record<string, unknown>;
+			const duplicate = (links as unknown[]).some((other, otherIndex) => {
+				if (otherIndex === index || !other || typeof other !== 'object') return false;
+				const otherLink = other as Record<string, unknown>;
+				return otherLink.itemId === link.itemId && otherLink.url === link.url;
+			});
+			return (
+				typeof link.id !== 'string' ||
+				typeof link.itemId !== 'string' ||
+				!itemIds.has(link.itemId) ||
+				typeof link.position !== 'number' ||
+				!Number.isInteger(link.position) ||
+				duplicate ||
+				normalizeProductLinkInput({ label: link.label, url: link.url }) === null
 			);
 		})
 	)

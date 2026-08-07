@@ -106,6 +106,29 @@ describe('品目削除のカスケード', () => {
 	});
 });
 
+describe('商品リンク', () => {
+	it('品目内で追加・並べ替え・削除でき、同一URLは重複しない', () => {
+		const item = stock.createItem(db, hhA, itemInput());
+		const amazon = stock.createProductLink(db, hhA, { itemId: item.id, label: 'Amazon', url: 'https://amazon.example/item' })!;
+		const rakuten = stock.createProductLink(db, hhA, { itemId: item.id, label: '楽天', url: 'https://rakuten.example/item' })!;
+		expect(() => stock.createProductLink(db, hhA, { itemId: item.id, label: '', url: amazon.url })).toThrow('同じURL');
+		expect(stock.listProductLinks(db, hhA, item.id)?.map((link) => link.id)).toEqual([amazon.id, rakuten.id]);
+		stock.moveProductLink(db, hhA, rakuten.id, 'up');
+		expect(stock.listProductLinks(db, hhA, item.id)?.map((link) => link.id)).toEqual([rakuten.id, amazon.id]);
+		stock.deleteProductLink(db, hhA, rakuten.id);
+		expect(stock.listProductLinks(db, hhA, item.id)?.map((link) => link.position)).toEqual([0]);
+	});
+
+	it('別世帯のリンクは見えず、品目削除でカスケードする', () => {
+		const item = stock.createItem(db, hhA, itemInput());
+		const link = stock.createProductLink(db, hhA, { itemId: item.id, label: '', url: 'https://example.com/item' })!;
+		expect(stock.listProductLinks(db, hhB, item.id)).toBeNull();
+		expect(stock.deleteProductLink(db, hhB, link.id)).toBe(false);
+		stock.deleteItem(db, hhA, item.id);
+		expect(stock.getProductLink(db, hhA, link.id)).toBeNull();
+	});
+});
+
 describe('listBundles', () => {
 	it('世帯ごとに品目と配下データをまとめる', () => {
 		const a = stock.createItem(db, hhA, itemInput('A'));
@@ -157,6 +180,7 @@ describe('importSnapshot', () => {
 			items: [
 				{ id: 'old-1', name: '洗剤', unit: 'ml', category: 'キッチン', leadTimeDays: null, provisionalDaysToDeplete: 30 }
 			],
+			productLinks: [{ id: 'l1', itemId: 'old-1', label: '公式', url: 'https://example.com/item', position: 0 }],
 			purchases: [{ id: 'p1', itemId: 'old-1', volume: 300, price: 250, purchasedAt: day(0), source: 'manual' as const }],
 			ranOutEvents: [{ id: 'r1', itemId: 'old-1', at: day(5) }],
 			adjustments: [],
@@ -168,6 +192,7 @@ describe('importSnapshot', () => {
 		expect(bundles).toHaveLength(1);
 		expect(bundles[0].item.id).not.toBe('old-1'); // 採番し直し
 		expect(bundles[0].purchases).toHaveLength(1);
+		expect(bundles[0].productLinks?.[0].url).toBe('https://example.com/item');
 		expect(bundles[0].ranOutEvents).toHaveLength(1);
 		// 設定は取り込まない(世帯の既定を維持)
 		expect(stock.getSettings(db, hhA).defaultLeadTimeDays).toBe(7);

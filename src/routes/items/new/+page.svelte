@@ -13,6 +13,7 @@
 	let firstDate = $state(localDateInput());
 	let firstPrice = $state('');
 	let provisionalDays = $state('30');
+	let productLinks = $state([{ label: '', url: '' }]);
 	let saving = $state(false);
 	let error = $state('');
 
@@ -66,6 +67,9 @@
 				purchasedAt: dateInputToTimestamp(firstDate),
 				source: 'manual'
 			});
+			for (const link of productLinks) {
+				if (link.url.trim()) await store.addProductLink({ itemId: id, label: link.label.trim(), url: link.url.trim() });
+			}
 			await goto(resolve('/items/[id]', { id }));
 		} finally {
 			saving = false;
@@ -129,6 +133,19 @@
 		<input bind:value={leadTime} type="number" step="any" min="0" placeholder="未入力なら全体既定" />
 		<small style="color:var(--muted);">購入推奨日を枯渇予想日の何日前にするか。空欄なら設定の既定値。</small>
 	</label>
+
+	<fieldset style="border:1px solid var(--border); border-radius:0.5rem; padding:0.8rem;">
+		<legend style="padding:0 0.4rem; color:var(--muted);">商品リンク(任意)</legend>
+		{#each productLinks as link, index (index)}
+			<div style="display:flex; gap:0.5rem; align-items:end; margin-bottom:0.5rem;">
+				<label style="flex:1;"><span style="font-size:0.8rem;">表示名</span><input bind:value={link.label} maxlength="100" placeholder="Amazon" /></label>
+				<label style="flex:2;"><span style="font-size:0.8rem;">URL</span><input bind:value={link.url} maxlength="2048" type="url" placeholder="https://..." /></label>
+				{#if productLinks.length > 1}<button type="button" onclick={() => (productLinks = productLinks.filter((_, i) => i !== index))}>削除</button>{/if}
+			</div>
+		{/each}
+		<button type="button" onclick={() => (productLinks = [...productLinks, { label: '', url: '' }])}>＋ 商品リンクを追加</button>
+		<small style="display:block; color:var(--muted); margin-top:0.4rem;">空欄の行は無視されます。http/https のみ登録できます。</small>
+	</fieldset>
 
 	{#if error}
 		<p style="color:var(--danger); margin:0;">{error}</p>
