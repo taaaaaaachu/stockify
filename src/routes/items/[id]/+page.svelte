@@ -211,7 +211,9 @@
 
 	const sectionStyle =
 		'background:var(--card); border:1px solid var(--border); border-radius:0.6rem; padding:0.9rem; margin-bottom:1rem;';
-	const inputRow = 'display:flex; flex-direction:column; gap:0.2rem; flex:1;';
+	// flex-basis を持たせて、狭い画面では縦積みに折り返す。min-width:0 で
+	// input の既定幅(size属性由来)がパネル幅を押し広げるのを防ぐ。
+	const inputRow = 'display:flex; flex-direction:column; gap:0.2rem; flex:1 1 7rem; min-width:0;';
 </script>
 
 <a href={resolve('/')} style="color:var(--muted); text-decoration:none; font-size:0.9rem;">← 在庫へ戻る</a>
@@ -457,11 +459,11 @@
 		</div>
 		{#if editing}
 			<form onsubmit={saveEdit} style="display:flex; flex-direction:column; gap:0.6rem; margin-top:0.6rem;">
-				<div style="display:flex; gap:0.6rem;">
+				<div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
 					<label style={inputRow}><span style="font-size:0.85rem;">品目名</span><input bind:value={eName} required /></label>
 					<label style={inputRow}><span style="font-size:0.85rem;">単位</span><input bind:value={eUnit} required /></label>
 				</div>
-				<div style="display:flex; gap:0.6rem;">
+				<div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
 					<label style={inputRow}><span style="font-size:0.85rem;">カテゴリ / 保管場所</span><input bind:value={eCategory} list="category-options" /></label>
 					<datalist id="category-options">
 						{#each store.categories as c (c)}
@@ -492,3 +494,12 @@
 		>
 	</div>
 {/if}
+
+<style>
+	/* input の既定幅(size属性由来の約20文字ぶん)がフレックス項目を押し広げて
+	   パネルからはみ出すのを防ぐ。幅指定を inline style で持つ input は従来どおり。 */
+	input {
+		width: 100%;
+		min-width: 0;
+	}
+</style>

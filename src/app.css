@@ -21,6 +21,17 @@
 	box-sizing: border-box;
 }
 
+/* フォーム部品は既定で size 属性由来の幅(約20文字ぶん)を持ち、
+   フレックス項目だと min-width:auto のせいで縮まず、親パネルからはみ出す。
+   縮小を許可し、どんな場合も親幅を超えないようにする。
+   個別に width を指定している箇所は inline style が優先されるため影響しない。 */
+input,
+select,
+textarea {
+	min-width: 0;
+	max-width: 100%;
+}
+
 body {
 	margin: 0;
 	background: var(--bg);
