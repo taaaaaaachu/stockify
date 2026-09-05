@@ -12,8 +12,31 @@
 		disablePush
 	} from '$lib/app/push';
 
+	let { data } = $props();
+
 	let leadTime = $state('');
 	let saved = $state(false);
+
+	// 世帯ごとの通知ON/OFF。表示はサーバーデータ由来、保存後は invalidateAll で再取得する。
+	const notifyHouseholds = $derived(data.notifyHouseholds);
+	let householdNotifyError = $state('');
+
+	async function toggleHouseholdNotify(id: string, enabled: boolean) {
+		householdNotifyError = '';
+		try {
+			const res = await fetch('/api/households/notify', {
+				method: 'PATCH',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ householdId: id, enabled })
+			});
+			if (!res.ok) householdNotifyError = '通知設定の保存に失敗しました。';
+		} catch {
+			householdNotifyError = '通知設定の保存に失敗しました。';
+		} finally {
+			// 成功・失敗どちらでもサーバー値へ表示を揃える(チェックボックスのずれを防ぐ)。
+			await invalidateAll();
+		}
+	}
 
 	// ストア読込後に初期値を反映する。
 	$effect(() => {
@@ -162,6 +185,32 @@
 				</label>
 				{#if notifyTimeSaved}<span style="color:var(--ok); font-size:0.85rem;">保存しました</span>{/if}
 			</div>
+
+			{#if notifyHouseholds.length >= 2}
+				<div style="margin-top:1.25rem;">
+					<span>世帯ごとの通知</span>
+					<small style="color:var(--muted); display:block; margin:0.15rem 0 0.4rem;">
+						属している世帯ごとに通知の受け取りを切り替えられます。オフにした世帯の品目は通知に含まれません。
+					</small>
+					<ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.35rem;">
+						{#each notifyHouseholds as h (h.id)}
+							<li>
+								<label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+									<input
+										type="checkbox"
+										checked={h.notifyEnabled}
+										onchange={(e) => toggleHouseholdNotify(h.id, e.currentTarget.checked)}
+									/>
+									<span>{h.name}</span>
+								</label>
+							</li>
+						{/each}
+					</ul>
+					{#if householdNotifyError}
+						<p style="color:var(--danger); margin:0.4rem 0 0; font-size:0.85rem;">{householdNotifyError}</p>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 		{#if pushError}<p style="color:var(--danger); margin:0.5rem 0 0;">{pushError}</p>{/if}
 	</section>

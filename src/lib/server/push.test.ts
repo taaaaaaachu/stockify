@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { createDb, type Db } from './db';
-import { registerUser } from './households';
+import { registerUser, createHousehold, setHouseholdNotifyEnabled } from './households';
 import * as stock from './stock';
 import {
 	saveSubscription,
@@ -60,6 +60,29 @@ describe('dueItemNamesForUser', () => {
 		expect(dueItemNamesForUser(db, userId, day(25))).toEqual(['洗剤']);
 		// 10日時点ではまだ十分。
 		expect(dueItemNamesForUser(db, userId, day(10))).toEqual([]);
+	});
+
+	it('通知をOFFにした世帯の品目は集めない', () => {
+		const jikka = createHousehold(db, '実家', userId);
+		const mk = (hh: string, name: string) => {
+			const item = stock.createItem(db, hh, {
+				name,
+				unit: 'ml',
+				category: null,
+				leadTimeDays: null,
+				provisionalDaysToDeplete: 30
+			});
+			stock.createPurchase(db, hh, { itemId: item.id, volume: 300, price: null, purchasedAt: day(0), source: 'manual' });
+		};
+		mk(hh, '自宅の洗剤');
+		mk(jikka.id, '実家の洗剤');
+
+		// 既定では両世帯が対象。
+		expect(dueItemNamesForUser(db, userId, day(25)).sort()).toEqual(['実家の洗剤', '自宅の洗剤']);
+
+		// 実家の通知をOFFにすると実家の品目は除外される。
+		setHouseholdNotifyEnabled(db, userId, jikka.id, false);
+		expect(dueItemNamesForUser(db, userId, day(25))).toEqual(['自宅の洗剤']);
 	});
 });
 

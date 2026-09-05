@@ -198,6 +198,8 @@ export interface UserHousehold {
 	name: string;
 	role: HouseholdRole;
 	defaultLeadTimeDays: number;
+	/** この世帯の購入リマインド通知を受け取るか。 */
+	notifyEnabled: boolean;
 }
 
 export interface HouseholdSummary {
@@ -264,13 +266,32 @@ export function listUserHouseholds(db: Db, userId: string): UserHousehold[] {
 			id: households.id,
 			name: households.name,
 			role: memberships.role,
-			defaultLeadTimeDays: households.defaultLeadTimeDays
+			defaultLeadTimeDays: households.defaultLeadTimeDays,
+			notifyEnabled: memberships.notifyEnabled
 		})
 		.from(memberships)
 		.innerJoin(households, eq(memberships.householdId, households.id))
 		.where(eq(memberships.userId, userId))
 		.orderBy(households.createdAt)
 		.all();
+}
+
+/**
+ * ある世帯の購入リマインド通知を受け取るかどうかを、ユーザーごとに設定する。
+ * 所属していない世帯を指定したときは何もしない(false を返す)。
+ */
+export function setHouseholdNotifyEnabled(
+	db: Db,
+	userId: string,
+	householdId: string,
+	enabled: boolean
+): boolean {
+	const result = db
+		.update(memberships)
+		.set({ notifyEnabled: enabled })
+		.where(and(eq(memberships.userId, userId), eq(memberships.householdId, householdId)))
+		.run();
+	return result.changes > 0;
 }
 
 /** 世帯設定(既定リードタイム)を更新する。 */

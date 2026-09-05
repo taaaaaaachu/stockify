@@ -17,7 +17,8 @@ import {
 	joinHouseholdByInvite,
 	listPendingOwnershipTransfers,
 	listHouseholdSummaries,
-	removeHouseholdMember
+	removeHouseholdMember,
+	setHouseholdNotifyEnabled
 } from './households';
 
 let db: Db;
@@ -144,6 +145,38 @@ describe('複数世帯所属', () => {
 		const households = listUserHouseholds(db, r.user.id);
 		expect(households).toHaveLength(2);
 		expect(households.every((h) => h.role === 'owner')).toBe(true);
+	});
+});
+
+describe('世帯ごとの通知ON/OFF', () => {
+	it('既定では全世帯が通知ONで、世帯単位で切り替えられる', () => {
+		const r = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false, householdName: '自宅' });
+		if (!r.ok) throw new Error('setup failed');
+		const jikka = createHousehold(db, '実家', r.user.id);
+
+		expect(listUserHouseholds(db, r.user.id).every((h) => h.notifyEnabled)).toBe(true);
+
+		expect(setHouseholdNotifyEnabled(db, r.user.id, jikka.id, false)).toBe(true);
+
+		const after = listUserHouseholds(db, r.user.id);
+		expect(after.find((h) => h.id === jikka.id)?.notifyEnabled).toBe(false);
+		expect(after.find((h) => h.name === '自宅')?.notifyEnabled).toBe(true);
+
+		// 元に戻せる。
+		expect(setHouseholdNotifyEnabled(db, r.user.id, jikka.id, true)).toBe(true);
+		expect(listUserHouseholds(db, r.user.id).every((h) => h.notifyEnabled)).toBe(true);
+	});
+
+	it('所属していない世帯を指定しても他ユーザーの設定は変えない', () => {
+		const alice = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		if (!alice.ok) throw new Error('setup failed');
+		const bobHouse = createHousehold(db, 'ボブの家');
+		const invite = createInvite(db, bobHouse.id, alice.user.id, null);
+		const bob = registerUser(db, { username: 'bob', passwordHash: 'x', requireInvite: true, inviteCode: invite.code });
+		if (!bob.ok) throw new Error('setup failed');
+
+		expect(setHouseholdNotifyEnabled(db, alice.user.id, bobHouse.id, false)).toBe(false);
+		expect(listUserHouseholds(db, bob.user.id)[0].notifyEnabled).toBe(true);
 	});
 });
 

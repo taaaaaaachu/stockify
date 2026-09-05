@@ -13,7 +13,13 @@ declare global {
 				mustChangePassword: boolean;
 			} | null;
 			/** ログイン中ユーザーが所属する世帯の一覧。 */
-			households: { id: string; name: string; role: HouseholdRole; defaultLeadTimeDays: number }[];
+			households: {
+				id: string;
+				name: string;
+				role: HouseholdRole;
+				defaultLeadTimeDays: number;
+				notifyEnabled: boolean;
+			}[];
 			/** 現在選択中の世帯。未ログインや世帯無しなら null。 */
 			activeHousehold: { id: string; name: string; role: HouseholdRole } | null;
 		}

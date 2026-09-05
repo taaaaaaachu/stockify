@@ -64,6 +64,8 @@ export const memberships = sqliteTable(
 			.notNull()
 			.references(() => households.id, { onDelete: 'cascade' }),
 		role: text('role').notNull().$type<HouseholdRole>().default('member'),
+		/** この世帯の購入リマインド通知を受け取るか。世帯ごとに個別にON/OFFできる。 */
+		notifyEnabled: integer('notify_enabled', { mode: 'boolean' }).notNull().default(true),
 		createdAt: integer('created_at').notNull()
 	},
 	(t) => [

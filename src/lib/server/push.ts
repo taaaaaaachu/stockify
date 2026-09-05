@@ -114,6 +114,8 @@ export async function sendWebPush(
 export function dueItemNamesForUser(db: Db, userId: string, now: number): string[] {
 	const names: string[] = [];
 	for (const h of listUserHouseholds(db, userId)) {
+		// 世帯ごとに通知をOFFにしていればその世帯の品目は集計しない。
+		if (!h.notifyEnabled) continue;
 		const bundles = listBundles(db, h.id);
 		const rows = shoppingList(buildDashboard(bundles, { defaultLeadTimeDays: h.defaultLeadTimeDays }, now));
 		names.push(...rows.map((r) => r.item.name));
