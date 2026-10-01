@@ -8,6 +8,14 @@ import type { Subscription } from '$lib/types';
 export const MAX_BACKFILL = 1000;
 
 /**
+ * 遅延生成した購入の ID。定期便と配送日から決定的に作り、複数端末やサーバーで
+ * 同じ回を生成しても同一 ID に揃えて重複を防ぐ(ADR 0009)。
+ */
+export function deliveryPurchaseId(subscriptionId: string, deliveredAt: number): string {
+	return `sub-${subscriptionId}-${Math.round(deliveredAt)}`;
+}
+
+/**
  * スキップ後の次回予定日。現在の次回予定日を 1 間隔ぶん先送りした時刻を返す
  * (その回の購入は生成しない)。未来は次回予定日 1 点だけなので、スキップは
  * この 1 点を進める定型的な次回日変更にあたる。

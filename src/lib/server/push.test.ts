@@ -54,7 +54,7 @@ describe('dueItemNamesForUser', () => {
 			category: null,
 			leadTimeDays: null,
 			provisionalDaysToDeplete: 30
-		});
+		})!;
 		stock.createPurchase(db, hh, { itemId: item.id, volume: 300, price: null, purchasedAt: day(0), source: 'manual' });
 		// 推奨は 23日目。25日時点では due。
 		expect(dueItemNamesForUser(db, userId, day(25))).toEqual(['洗剤']);
@@ -71,7 +71,7 @@ describe('dueItemNamesForUser', () => {
 				category: null,
 				leadTimeDays: null,
 				provisionalDaysToDeplete: 30
-			});
+			})!;
 			stock.createPurchase(db, hh, { itemId: item.id, volume: 300, price: null, purchasedAt: day(0), source: 'manual' });
 		};
 		mk(hh, '自宅の洗剤');
@@ -94,7 +94,7 @@ describe('notifyDueRestocks', () => {
 			category: null,
 			leadTimeDays: null,
 			provisionalDaysToDeplete: 30
-		});
+		})!;
 		stock.createPurchase(db, hh, { itemId: item.id, volume: 300, price: null, purchasedAt: day(0), source: 'manual' });
 	}
 

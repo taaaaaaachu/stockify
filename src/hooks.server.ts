@@ -53,9 +53,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 		const households = listUserHouseholds(db, event.locals.user.id);
 		event.locals.households = households;
 
-		// 現在の世帯を Cookie から解決。所属していなければ先頭にフォールバック。
+		// 同期の再送は操作した世帯をヘッダーで明示する(ADR 0009)。所属していなければ世帯なし(=拒否)。
+		const explicit = event.request.headers.get('x-stockify-household');
+		// それ以外は現在の世帯を Cookie から解決。所属していなければ先頭にフォールバック。
 		const wanted = event.cookies.get(HOUSEHOLD_COOKIE);
-		const active = households.find((h) => h.id === wanted) ?? households[0] ?? null;
+		const active = explicit
+			? (households.find((h) => h.id === explicit) ?? null)
+			: (households.find((h) => h.id === wanted) ?? households[0] ?? null);
 		event.locals.activeHousehold = active
 			? { id: active.id, name: active.name, role: active.role }
 			: null;

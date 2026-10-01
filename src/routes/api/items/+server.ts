@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
 import { requireHousehold } from '$lib/server/apiGuard';
-import { parseNonNegativeNumber } from '$lib/server/inputValidation';
+import { parseClientId, parseNonNegativeNumber } from '$lib/server/inputValidation';
 import type { RequestHandler } from './$types';
 
 function str(v: unknown): string {
@@ -23,12 +23,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const unit = str(body?.unit);
 	if (!name) throw error(400, '品目名は必須です。');
 	if (!unit) throw error(400, '単位は必須です。');
+	const id = parseClientId(body?.id);
+	if (id === null) throw error(400, 'IDが不正です。');
 	const item = stock.createItem(db, householdId, {
 		name,
 		unit,
 		category: str(body?.category) || null,
 		leadTimeDays: optionalNonNegativeNumber(body?.leadTimeDays, 'リードタイム'),
 		provisionalDaysToDeplete: optionalNonNegativeNumber(body?.provisionalDaysToDeplete, '仮の消費日数')
-	});
+	}, id);
+	if (!item) throw error(404, '品目が見つかりません。');
 	return json(item, { status: 201 });
 };

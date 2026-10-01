@@ -35,7 +35,7 @@ import type {
 	SubscriptionInput
 	, ProductLinkInput
 } from '$lib/repo/types';
-import { generateDueDeliveries } from '$lib/domain/subscription';
+import { deliveryPurchaseId, generateDueDeliveries } from '$lib/domain/subscription';
 
 // --- 行 → ドメイン型 ---
 
@@ -109,6 +109,22 @@ function childItemId(
 	return row.itemId;
 }
 
+/**
+ * クライアント採番 ID での作成の冪等化(ADR 0009)。同じ ID の行が既に世帯内にあれば
+ * それを返し(再送)、他世帯の行と衝突していれば null(所有を明かさず 404 相当)。
+ * 未作成なら undefined。
+ */
+function findExistingChild<T>(
+	db: Db,
+	householdId: string,
+	table: typeof purchases | typeof ranouts | typeof adjustments | typeof subscriptions | typeof productLinks,
+	id: string
+): T | null | undefined {
+	const row = db.select().from(table).where(eq(table.id, id)).get();
+	if (!row) return undefined;
+	return childItemId(db, householdId, table, id) ? (row as T) : null;
+}
+
 // --- 設定 ---
 
 export function getSettings(db: Db, householdId: string): AppSettings {
@@ -150,8 +166,15 @@ export function getItem(db: Db, householdId: string, id: string): StockItem | nu
 	return row ? toItem(row) : null;
 }
 
-export function createItem(db: Db, householdId: string, input: StockItemInput): StockItem {
-	const row: StockItemRow = { id: randomUUID(), householdId, ...input };
+export function createItem(
+	db: Db,
+	householdId: string,
+	input: StockItemInput,
+	id: string = randomUUID()
+): StockItem | null {
+	const existing = db.select().from(stockItems).where(eq(stockItems.id, id)).get();
+	if (existing) return existing.householdId === householdId ? toItem(existing) : null;
+	const row: StockItemRow = { id, householdId, ...input };
 	db.insert(stockItems).values(row).run();
 	return toItem(row);
 }
@@ -196,11 +219,18 @@ export function getProductLink(db: Db, householdId: string, id: string): Product
 	return row ? toProductLink(row) : null;
 }
 
-export function createProductLink(db: Db, householdId: string, input: ProductLinkInput): ProductLink | null {
+export function createProductLink(
+	db: Db,
+	householdId: string,
+	input: ProductLinkInput,
+	id: string = randomUUID()
+): ProductLink | null {
 	if (!itemInHousehold(db, householdId, input.itemId)) return null;
+	const existing = findExistingChild<ProductLinkRow>(db, householdId, productLinks, id);
+	if (existing !== undefined) return existing && toProductLink(existing);
 	const links = listProductLinks(db, householdId, input.itemId) ?? [];
 	if (links.some((link) => link.url === input.url)) throw new Error('同じURLの商品リンクは登録できません。');
-	const row: ProductLinkRow = { id: randomUUID(), ...input, position: links.length };
+	const row: ProductLinkRow = { id, ...input, position: links.length };
 	db.insert(productLinks).values(row).run();
 	return toProductLink(row);
 }
@@ -228,11 +258,22 @@ export function deleteProductLink(db: Db, householdId: string, id: string): bool
 	return true;
 }
 
-export function moveProductLink(db: Db, householdId: string, id: string, direction: 'up' | 'down'): boolean {
+/**
+ * 商品リンクを 1 つ上下へ動かす。fromPosition を渡すと、現在位置がそれと異なる場合は
+ * 何もしない(同じ移動操作の再送で二重に動かさないため。ADR 0009)。
+ */
+export function moveProductLink(
+	db: Db,
+	householdId: string,
+	id: string,
+	direction: 'up' | 'down',
+	fromPosition?: number
+): boolean {
 	const itemId = childItemId(db, householdId, productLinks, id);
 	if (!itemId) return false;
 	const links = db.select().from(productLinks).where(eq(productLinks.itemId, itemId)).all().sort((a, b) => a.position - b.position);
 	const index = links.findIndex((link) => link.id === id);
+	if (fromPosition !== undefined && links[index]?.position !== fromPosition) return true;
 	const otherIndex = direction === 'up' ? index - 1 : index + 1;
 	if (index < 0 || otherIndex < 0 || otherIndex >= links.length) return true;
 	const other = links[otherIndex];
@@ -250,9 +291,16 @@ export function listPurchases(db: Db, householdId: string, itemId: string): Purc
 	return db.select().from(purchases).where(eq(purchases.itemId, itemId)).all().map(toPurchase);
 }
 
-export function createPurchase(db: Db, householdId: string, input: PurchaseInput): Purchase | null {
+export function createPurchase(
+	db: Db,
+	householdId: string,
+	input: PurchaseInput,
+	id: string = randomUUID()
+): Purchase | null {
 	if (!itemInHousehold(db, householdId, input.itemId)) return null;
-	const row: PurchaseRow = { id: randomUUID(), ...input };
+	const existing = findExistingChild<PurchaseRow>(db, householdId, purchases, id);
+	if (existing !== undefined) return existing && toPurchase(existing);
+	const row: PurchaseRow = { id, ...input };
 	db.insert(purchases).values(row).run();
 	return toPurchase(row);
 }
@@ -279,9 +327,16 @@ export function deletePurchase(db: Db, householdId: string, id: string): boolean
 
 // --- 使い切り ---
 
-export function createRanOutEvent(db: Db, householdId: string, input: RanOutInput): RanOutEvent | null {
+export function createRanOutEvent(
+	db: Db,
+	householdId: string,
+	input: RanOutInput,
+	id: string = randomUUID()
+): RanOutEvent | null {
 	if (!itemInHousehold(db, householdId, input.itemId)) return null;
-	const row: RanoutRow = { id: randomUUID(), ...input };
+	const existing = findExistingChild<RanoutRow>(db, householdId, ranouts, id);
+	if (existing !== undefined) return existing && toRanout(existing);
+	const row: RanoutRow = { id, ...input };
 	db.insert(ranouts).values(row).run();
 	return toRanout(row);
 }
@@ -297,10 +352,13 @@ export function deleteRanOutEvent(db: Db, householdId: string, id: string): bool
 export function createAdjustment(
 	db: Db,
 	householdId: string,
-	input: AdjustmentInput
+	input: AdjustmentInput,
+	id: string = randomUUID()
 ): RemainingAdjustment | null {
 	if (!itemInHousehold(db, householdId, input.itemId)) return null;
-	const row: AdjustmentRow = { id: randomUUID(), ...input };
+	const existing = findExistingChild<AdjustmentRow>(db, householdId, adjustments, id);
+	if (existing !== undefined) return existing && toAdjustment(existing);
+	const row: AdjustmentRow = { id, ...input };
 	db.insert(adjustments).values(row).run();
 	return toAdjustment(row);
 }
@@ -316,10 +374,13 @@ export function deleteAdjustment(db: Db, householdId: string, id: string): boole
 export function createSubscription(
 	db: Db,
 	householdId: string,
-	input: SubscriptionInput
+	input: SubscriptionInput,
+	id: string = randomUUID()
 ): Subscription | null {
 	if (!itemInHousehold(db, householdId, input.itemId)) return null;
-	const row: SubscriptionRow = { id: randomUUID(), ...input };
+	const existing = findExistingChild<SubscriptionRow>(db, householdId, subscriptions, id);
+	if (existing !== undefined) return existing && toSubscription(existing);
+	const row: SubscriptionRow = { id, ...input };
 	db.insert(subscriptions).values(row).run();
 	return toSubscription(row);
 }
@@ -496,17 +557,20 @@ export function materializeDueSubscriptions(
 			const { deliveries, nextDeliveryAt } = generateDueDeliveries(sub, now);
 			if (deliveries.length === 0) continue;
 			for (const d of deliveries) {
-				tx.insert(purchases)
+				const inserted = tx
+					.insert(purchases)
 					.values({
-						id: randomUUID(),
+						id: deliveryPurchaseId(sub.id, d.deliveredAt),
 						itemId: sub.itemId,
 						volume: d.volume,
 						price: null,
 						purchasedAt: d.deliveredAt,
 						source: 'subscription'
 					})
+					// 他端末がオフラインで生成し同期済みの回は重複させない。
+					.onConflictDoNothing()
 					.run();
-				generated++;
+				generated += inserted.changes;
 			}
 			tx.update(subscriptions).set({ nextDeliveryAt }).where(eq(subscriptions.id, sub.id)).run();
 		}

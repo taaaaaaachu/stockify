@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	deliveryPurchaseId,
 	generateDueDeliveries,
 	nextDeliveryAfterSkip,
 	isAcceptableNextDelivery,
@@ -98,5 +99,17 @@ describe('isAcceptableNextDelivery', () => {
 	it('昨日以前は受け付けない', () => {
 		expect(isAcceptableNextDelivery(todayStart - 1, now)).toBe(false);
 		expect(isAcceptableNextDelivery(todayStart - 3 * MS_PER_DAY, now)).toBe(false);
+	});
+});
+
+describe('deliveryPurchaseId', () => {
+	it('同じ定期便・配送日なら同じ ID、違えば別 ID', () => {
+		expect(deliveryPurchaseId('s1', 1000)).toBe(deliveryPurchaseId('s1', 1000));
+		expect(deliveryPurchaseId('s1', 1000)).not.toBe(deliveryPurchaseId('s1', 2000));
+		expect(deliveryPurchaseId('s1', 1000)).not.toBe(deliveryPurchaseId('s2', 1000));
+	});
+
+	it('小数の配送日時(端数のある間隔)でも整数に丸める', () => {
+		expect(deliveryPurchaseId('s1', 1000.4)).toBe('sub-s1-1000');
 	});
 });

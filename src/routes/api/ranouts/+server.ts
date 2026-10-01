@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
 import { requireHousehold } from '$lib/server/apiGuard';
-import { parseFiniteNumber } from '$lib/server/inputValidation';
+import { parseClientId, parseFiniteNumber } from '$lib/server/inputValidation';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -12,7 +12,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const at = parseFiniteNumber(body?.at);
 	if (!itemId) throw error(400, '品目IDは必須です。');
 	if (at === null) throw error(400, '日時が不正です。');
-	const ev = stock.createRanOutEvent(db, householdId, { itemId, at });
+	const id = parseClientId(body?.id);
+	if (id === null) throw error(400, 'IDが不正です。');
+	const ev = stock.createRanOutEvent(db, householdId, { itemId, at }, id);
 	if (!ev) throw error(404, '品目が見つかりません。');
 	return json(ev, { status: 201 });
 };

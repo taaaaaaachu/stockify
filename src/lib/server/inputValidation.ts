@@ -24,6 +24,15 @@ export function parseFiniteNumber(value: unknown): number | null {
 	return Number.isFinite(number) ? number : null;
 }
 
+/**
+ * クライアント採番の ID(ADR 0009)。未指定なら undefined、不正なら null。
+ * UUID と定期便の決定的 ID(sub-<uuid>-<ms>)を受け付ける。
+ */
+export function parseClientId(value: unknown): string | null | undefined {
+	if (value === undefined || value === null) return undefined;
+	return typeof value === 'string' && /^[A-Za-z0-9-]{1,100}$/.test(value) ? value : null;
+}
+
 export function parseInteger(value: unknown): number | null {
 	const number = parseFiniteNumber(value);
 	return number !== null && Number.isInteger(number) ? number : null;

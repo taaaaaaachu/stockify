@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidSnapshot, parseFiniteNumber, parseNonNegativeNumber, parsePositiveNumber } from './inputValidation';
+import { isValidSnapshot, parseClientId, parseFiniteNumber, parseNonNegativeNumber, parsePositiveNumber } from './inputValidation';
 
 const item = {
 	id: 'item-1',
@@ -65,5 +65,18 @@ describe('入力検証', () => {
 				}]
 			})
 		).toBe(false);
+	});
+});
+
+describe('parseClientId', () => {
+	it('未指定は undefined、UUID と定期便の決定的 ID は受け付ける', () => {
+		expect(parseClientId(undefined)).toBeUndefined();
+		expect(parseClientId(null)).toBeUndefined();
+		expect(parseClientId('0b6f5d0e-1c2a-4f7e-9d3b-2a1c4e5f6a7b')).toBe('0b6f5d0e-1c2a-4f7e-9d3b-2a1c4e5f6a7b');
+		expect(parseClientId('sub-abc-1790000000000')).toBe('sub-abc-1790000000000');
+	});
+
+	it('文字列以外・空・記号入り・長すぎるものは不正', () => {
+		for (const v of [1, '', 'a/b', 'a b', 'x'.repeat(101)]) expect(parseClientId(v)).toBeNull();
 	});
 });

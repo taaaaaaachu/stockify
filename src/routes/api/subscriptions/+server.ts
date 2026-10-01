@@ -1,8 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
-import { parseFiniteNumber, parsePositiveNumber } from '$lib/server/inputValidation';
+import { operationTime, requireHousehold } from '$lib/server/apiGuard';
+import { parseClientId, parseFiniteNumber, parsePositiveNumber } from '$lib/server/inputValidation';
 import { isAcceptableNextDelivery } from '$lib/domain/subscription';
 import type { RequestHandler } from './$types';
 
@@ -16,12 +16,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const quantityPerDelivery = parsePositiveNumber(body?.quantityPerDelivery ?? 1);
 	if (!itemId) throw error(400, '品目IDは必須です。');
 	if (intervalDays === null) throw error(400, '間隔が不正です。');
-	if (nextDeliveryAt === null || !isAcceptableNextDelivery(nextDeliveryAt, Date.now()))
+	if (nextDeliveryAt === null || !isAcceptableNextDelivery(nextDeliveryAt, operationTime(request)))
 		throw error(400, '次回予定日は今日以降で指定してください。');
 	if (volumePerDelivery === null) throw error(400, '内容量が不正です。');
 	if (quantityPerDelivery === null) throw error(400, '個数が不正です。');
 	if (body?.paused !== undefined && typeof body.paused !== 'boolean')
 		throw error(400, 'paused が不正です。');
+	const id = parseClientId(body?.id);
+	if (id === null) throw error(400, 'IDが不正です。');
 
 	const sub = stock.createSubscription(db, householdId, {
 		itemId,
@@ -30,7 +32,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		volumePerDelivery,
 		quantityPerDelivery,
 		paused: body?.paused ?? false
-	});
+	}, id);
 	if (!sub) throw error(404, '品目が見つかりません。');
 	// 追加直後に過去分があれば生成しておく。
 	stock.materializeDueSubscriptions(db, householdId, Date.now());

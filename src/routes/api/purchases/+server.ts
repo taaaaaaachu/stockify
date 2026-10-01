@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
 import { requireHousehold } from '$lib/server/apiGuard';
-import { parseFiniteNumber, parseNonNegativeNumber, parsePositiveNumber } from '$lib/server/inputValidation';
+import { parseClientId, parseFiniteNumber, parseNonNegativeNumber, parsePositiveNumber } from '$lib/server/inputValidation';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -21,6 +21,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 	const source = body?.source === undefined ? 'manual' : body.source;
 	if (source !== 'manual' && source !== 'subscription') throw error(400, '購入元が不正です。');
+	const id = parseClientId(body?.id);
+	if (id === null) throw error(400, 'IDが不正です。');
 
 	const purchase = stock.createPurchase(db, householdId, {
 		itemId,
@@ -28,7 +30,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		price,
 		purchasedAt,
 		source
-	});
+	}, id);
 	if (!purchase) throw error(404, '品目が見つかりません。');
 	return json(purchase, { status: 201 });
 };

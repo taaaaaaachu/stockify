@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
+import { operationTime, requireHousehold } from '$lib/server/apiGuard';
 import { parsePositiveNumber } from '$lib/server/inputValidation';
 import { isAcceptableNextDelivery } from '$lib/domain/subscription';
 import type { RequestHandler } from './$types';
@@ -24,7 +24,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 	if (body?.nextDeliveryAt !== undefined) {
 		const nextDeliveryAt = parsePositiveNumber(body.nextDeliveryAt);
-		if (nextDeliveryAt === null || !isAcceptableNextDelivery(nextDeliveryAt, Date.now()))
+		if (nextDeliveryAt === null || !isAcceptableNextDelivery(nextDeliveryAt, operationTime(request)))
 			throw error(400, '次回予定日は今日以降で指定してください。');
 	}
 	if (body?.paused !== undefined) {
