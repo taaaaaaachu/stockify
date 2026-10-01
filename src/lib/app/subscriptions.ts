@@ -1,4 +1,4 @@
-import { generateDueDeliveries } from '$lib/domain/subscription';
+import { deliveryPurchaseId, generateDueDeliveries } from '$lib/domain/subscription';
 import type { Repository } from '$lib/repo/types';
 
 /** 遅延生成の適用結果(サマリ)。 */
@@ -31,6 +31,7 @@ export async function materializeDueSubscriptions(
 
 			for (const delivery of deliveries) {
 				await repo.createPurchase({
+					id: deliveryPurchaseId(sub.id, delivery.deliveredAt),
 					itemId: item.id,
 					volume: delivery.volume,
 					price: null,

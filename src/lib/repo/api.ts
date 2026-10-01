@@ -1,86 +1,72 @@
-import type {
-	Purchase,
-	ProductLink,
-	RanOutEvent,
-	RemainingAdjustment,
-	StockItem,
-	Subscription
-} from '$lib/types';
-import type {
-	AdjustmentInput,
-	AppSettings,
-	PurchaseInput,
-	ProductLinkInput,
-	RanOutInput,
-	Snapshot,
-	StockItemInput,
-	SubscriptionInput
-} from './types';
+import type { OutboxOp, Snapshot } from './types';
 
-async function req<T>(input: string, init?: RequestInit): Promise<T> {
-	const res = await fetch(input, {
-		...init,
-		headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) }
-	});
-	if (!res.ok) {
-		let message = `リクエストに失敗しました (${res.status})`;
-		try {
-			const body = await res.json();
-			if (body?.message) message = body.message;
-		} catch {
-			/* JSON でないレスポンスは既定メッセージ */
-		}
-		throw new Error(message);
+/**
+ * 会員の在庫 API クライアント(ADR 0009)。読み書きはローカル DB で行い、ここは
+ * 未送信操作の送信と、同期用の全件取得だけを担う。世帯は Cookie の現在世帯に頼らず
+ * ヘッダーで明示する(送信待ちの間に世帯を切り替えても取り違えないため)。
+ */
+
+/** 送信結果の扱い。 */
+export type SendOutcome =
+	/** 反映済み(または対象が既に無い)。outbox から消す。 */
+	| { kind: 'done' }
+	/** サーバーが内容を拒否した。outbox から消してユーザーに知らせる。 */
+	| { kind: 'rejected'; message: string }
+	/** 通信不可・サーバー障害。順序を守るため送信を止め、後で再送する。 */
+	| { kind: 'retry' }
+	/** 認証切れ。送信を止め、再ログイン後に再送する。 */
+	| { kind: 'auth' };
+
+/** HTTP ステータスから送信結果の扱いを決める。 */
+export function classifyStatus(status: number): SendOutcome['kind'] {
+	if (status >= 200 && status < 300) return 'done';
+	// 他端末で削除済みなど、対象が無い操作は捨てる(削除優先)。
+	if (status === 404) return 'done';
+	if (status === 401 || status === 403) return 'auth';
+	if (status === 408 || status === 425 || status === 429 || status >= 500) return 'retry';
+	return 'rejected';
+}
+
+function request(householdId: string, method: string, path: string, body?: unknown, opAt?: number) {
+	const headers: Record<string, string> = {
+		'content-type': 'application/json',
+		'x-stockify-household': householdId
+	};
+	if (opAt !== undefined) headers['x-stockify-op-at'] = String(opAt);
+	return fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+}
+
+/** 未送信操作を 1 件送る。fetch 自体の失敗(通信不可)は retry として扱う。 */
+export async function sendOp(householdId: string, op: OutboxOp): Promise<SendOutcome> {
+	let res: Response;
+	try {
+		res = await request(householdId, op.method, op.path, op.body, op.at);
+	} catch {
+		return { kind: 'retry' };
 	}
-	if (res.status === 204) return undefined as T;
+	const kind = classifyStatus(res.status);
+	if (kind !== 'rejected') return { kind } as SendOutcome;
+	const body = await res.json().catch(() => null);
+	return { kind, message: body?.message ?? `サーバーが拒否しました (${res.status})` };
+}
+
+/** 同期用の呼び出しの失敗。kind で通信不可と認証切れを区別する。 */
+export class SyncError extends Error {
+	constructor(readonly kind: 'retry' | 'auth' | 'rejected', status: number) {
+		super(`同期に失敗しました (${status})`);
+	}
+}
+
+async function call<T>(householdId: string, method: string, path: string): Promise<T> {
+	const res = await request(householdId, method, path);
+	const kind = classifyStatus(res.status);
+	if (!res.ok) throw new SyncError(kind === 'done' ? 'rejected' : kind, res.status);
 	return res.json() as Promise<T>;
 }
 
-const send = <T>(method: string, url: string, body?: unknown) =>
-	req<T>(url, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+/** 定期便の遅延生成(ADR 0002)をサーバーで行う。 */
+export const serverRefresh = (householdId: string) => call<unknown>(householdId, 'POST', '/api/refresh');
 
-/**
- * 会員の在庫 API クライアント。現在の世帯への書き込みと、同期用の全件取得を担う
- * (読み取りはローカル DB から行う。ADR 0009)。
- */
-export class ApiRepository {
-	/** 定期便の遅延生成(ADR 0002)をサーバーで行う。 */
-	async refresh(): Promise<void> {
-		await send('POST', '/api/refresh');
-	}
-	/** 現在の世帯の全データ(同期の取り込み元)。 */
-	exportAll = () => req<Snapshot>('/api/state/export');
-
-	updateSettings = (patch: Partial<AppSettings>) => send<AppSettings>('PATCH', '/api/settings', patch);
-
-	createItem = (input: StockItemInput) => send<StockItem>('POST', '/api/items', input);
-	updateItem = (id: string, patch: Partial<StockItemInput>) =>
-		send<StockItem>('PATCH', `/api/items/${id}`, patch);
-	deleteItem = (id: string) => send<void>('DELETE', `/api/items/${id}`);
-
-	createProductLink = (input: ProductLinkInput) => send<ProductLink>('POST', '/api/product-links', input);
-	updateProductLink = (id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>) =>
-		send<ProductLink>('PATCH', `/api/product-links/${id}`, patch);
-	deleteProductLink = (id: string) => send<void>('DELETE', `/api/product-links/${id}`);
-	moveProductLink = async (id: string, direction: 'up' | 'down') => {
-		await send('POST', `/api/product-links/${id}/move`, { direction });
-	};
-
-	createPurchase = (input: PurchaseInput) => send<Purchase>('POST', '/api/purchases', input);
-	updatePurchase = (id: string, patch: Partial<Omit<Purchase, 'id' | 'itemId'>>) =>
-		send<Purchase>('PATCH', `/api/purchases/${id}`, patch);
-	deletePurchase = (id: string) => send<void>('DELETE', `/api/purchases/${id}`);
-
-	createRanOutEvent = (input: RanOutInput) => send<RanOutEvent>('POST', '/api/ranouts', input);
-	deleteRanOutEvent = (id: string) => send<void>('DELETE', `/api/ranouts/${id}`);
-
-	createAdjustment = (input: AdjustmentInput) =>
-		send<RemainingAdjustment>('POST', '/api/adjustments', input);
-	deleteAdjustment = (id: string) => send<void>('DELETE', `/api/adjustments/${id}`);
-
-	createSubscription = (input: SubscriptionInput) =>
-		send<Subscription>('POST', '/api/subscriptions', input);
-	updateSubscription = (id: string, patch: Partial<Omit<Subscription, 'id' | 'itemId'>>) =>
-		send<Subscription>('PATCH', `/api/subscriptions/${id}`, patch);
-	deleteSubscription = (id: string) => send<void>('DELETE', `/api/subscriptions/${id}`);
-}
+/** 世帯の全データ(同期の取り込み元)。 */
+export const fetchSnapshot = (householdId: string) =>
+	call<Snapshot>(householdId, 'GET', '/api/state/export');

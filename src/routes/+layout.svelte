@@ -19,6 +19,24 @@
 			.catch((error: unknown) => console.error('Service Workerの登録に失敗しました', error));
 	});
 
+	// 通信の回復時・アプリに戻ったときに、会員の未送信操作を送ってサーバーと揃える(ADR 0009)。
+	onMount(() => {
+		const sync = () => {
+			if (document.visibilityState === 'visible') void store.sync();
+		};
+		window.addEventListener('online', sync);
+		document.addEventListener('visibilitychange', sync);
+		return () => {
+			window.removeEventListener('online', sync);
+			document.removeEventListener('visibilitychange', sync);
+		};
+	});
+
+	function confirmLogout(e: SubmitEvent) {
+		const message = `サーバーへ未送信の変更が ${store.pending} 件あります。ログアウトすると失われます。ログアウトしますか?`;
+		if (store.pending > 0 && !confirm(message)) e.preventDefault();
+	}
+
 	// サーバーの認証・世帯コンテキストをストアへ反映(変化でリポジトリを選び直す)。
 	$effect(() => {
 		store.configure({
@@ -83,7 +101,7 @@
 					</select>
 				{/if}
 				<a href={resolve('/account')} style="color:var(--muted); text-decoration:none;">{data.user.username}</a>
-				<form method="POST" action="/logout">
+				<form method="POST" action="/logout" onsubmit={confirmLogout}>
 					<button
 						type="submit"
 						style="border:none; background:none; color:var(--muted); cursor:pointer; font-size:0.85rem;"
@@ -100,14 +118,28 @@
 {/if}
 
 <main style="max-width:48rem; margin:0 auto; padding:1rem;">
-	{#if store.offline}
-		<p
-			role="status"
-			style="margin:0 0 1rem; padding:0.5rem 0.75rem; border-radius:0.5rem;
-			       border:1px solid var(--warn); color:var(--warn); background:var(--card); font-size:0.85rem;"
-		>
-			オフラインのため、最後に同期したデータを表示しています。変更は通信できるときに行ってください。
+	{#if store.syncState !== 'synced' || store.pending > 0}
+		<p role="status" style="margin:0 0 1rem; padding:0.5rem 0.75rem; border-radius:0.5rem; border:1px solid var(--warn); color:var(--warn); background:var(--card); font-size:0.85rem;">
+			{#if store.syncState === 'auth'}
+				ログインの有効期限が切れたため同期できません。<a href={resolve('/login')}>ログインし直してください</a>。
+			{:else if store.syncState === 'offline'}
+				オフラインです。この端末に保存したデータを表示しています。
+			{/if}
+			{#if store.pending > 0}
+				未送信の変更が {store.pending} 件あります(通信できるようになると自動で送信します)。
+			{/if}
 		</p>
+	{/if}
+	{#if store.rejected.length > 0}
+		<div role="alert" style="margin:0 0 1rem; padding:0.5rem 0.75rem; border-radius:0.5rem; border:1px solid var(--warn); color:var(--warn); background:var(--card); font-size:0.85rem;">
+			<p style="margin:0;">次の変更はサーバーに反映できなかったため取り消しました。</p>
+			<ul style="margin:0.25rem 0; padding-left:1.25rem;">
+				{#each store.rejected as message, i (i)}
+					<li>{message}</li>
+				{/each}
+			</ul>
+			<button type="button" onclick={() => store.dismissRejected()}>閉じる</button>
+		</div>
 	{/if}
 	{#if data.user?.mustChangePassword}
 		<PasswordChangeForm forced={true} />

@@ -17,11 +17,12 @@ import type {
 	Snapshot,
 	StockItemInput,
 	ProductLinkInput,
-	SubscriptionInput
+	SubscriptionInput,
+	OutboxOp
 } from './types';
 
 const DB_NAME = 'stockify';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const SETTINGS_KEY = 'app';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -36,6 +37,8 @@ interface StockifyDB extends DBSchema {
 	adjustments: { key: string; value: RemainingAdjustment; indexes: { by_item: string } };
 	subscriptions: { key: string; value: Subscription; indexes: { by_item: string } };
 	productLinks: { key: string; value: ProductLink; indexes: { by_item: string } };
+	/** 会員のサーバー未送信の操作(ADR 0009)。ゲストでは使わない。 */
+	outbox: { key: number; value: OutboxOp };
 }
 
 function newId(): string {
@@ -63,6 +66,7 @@ export class IndexedDbRepository implements Repository {
 				if (!db.objectStoreNames.contains('ranouts')) db.createObjectStore('ranouts', { keyPath: 'id' }).createIndex('by_item', 'itemId');
 				if (!db.objectStoreNames.contains('adjustments')) db.createObjectStore('adjustments', { keyPath: 'id' }).createIndex('by_item', 'itemId');
 				if (!db.objectStoreNames.contains('subscriptions')) db.createObjectStore('subscriptions', { keyPath: 'id' }).createIndex('by_item', 'itemId');
+				if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'seq', autoIncrement: true });
 				if (!db.objectStoreNames.contains('productLinks')) db.createObjectStore('productLinks', { keyPath: 'id' }).createIndex('by_item', 'itemId');
 			}
 		});
@@ -127,6 +131,11 @@ export class IndexedDbRepository implements Repository {
 		await tx.done;
 	}
 
+	async getProductLink(id: string): Promise<ProductLink | null> {
+		const db = await this.#dbPromise;
+		return (await db.get('productLinks', id)) ?? null;
+	}
+
 	async listProductLinks(itemId: string): Promise<ProductLink[]> {
 		const db = await this.#dbPromise;
 		return (await db.getAllFromIndex('productLinks', 'by_item', itemId)).sort((a, b) => a.position - b.position);
@@ -183,7 +192,8 @@ export class IndexedDbRepository implements Repository {
 
 	async createPurchase(input: PurchaseInput): Promise<Purchase> {
 		const db = await this.#dbPromise;
-		const purchase: Purchase = { id: newId(), ...input };
+		// 定期便の遅延生成は決定的 ID を渡す(同じ回の再生成は上書きになる)。
+		const purchase: Purchase = { ...input, id: input.id ?? newId() };
 		await db.put('purchases', purchase);
 		return purchase;
 	}
@@ -317,11 +327,19 @@ export class IndexedDbRepository implements Repository {
 		return { settings, items, productLinks, purchases, ranOutEvents, adjustments, subscriptions };
 	}
 
-	/** 全データをスナップショットで置き換える(会員のサーバー → ローカル取り込み)。 */
-	async replaceAll(snapshot: Snapshot): Promise<void> {
+	/**
+	 * 全データをスナップショットで置き換える(会員のサーバー → ローカル取り込み)。
+	 * 未送信の操作が残っていれば、ローカルの変更を消さないよう何もせず false を返す。
+	 */
+	async replaceAll(snapshot: Snapshot): Promise<boolean> {
 		const db = await this.#dbPromise;
 		const stores = ['settings', 'items', 'purchases', 'ranouts', 'adjustments', 'subscriptions', 'productLinks'] as const;
-		const tx = db.transaction(stores, 'readwrite');
+		const tx = db.transaction([...stores, 'outbox'], 'readwrite');
+		if ((await tx.objectStore('outbox').count()) > 0) {
+			tx.abort();
+			await tx.done.catch(() => undefined);
+			return false;
+		}
 		for (const store of stores) await tx.objectStore(store).clear();
 		await tx.objectStore('settings').put(snapshot.settings, SETTINGS_KEY);
 		const rows = [
@@ -336,6 +354,25 @@ export class IndexedDbRepository implements Repository {
 			for (const value of values) await tx.objectStore(store).put(value as never);
 		}
 		await tx.done;
+		return true;
+	}
+
+	// --- outbox(会員の未送信操作) ---
+	async enqueue(op: Omit<OutboxOp, 'seq'>): Promise<void> {
+		const db = await this.#dbPromise;
+		await db.add('outbox', op as OutboxOp);
+	}
+	async listOutbox(): Promise<OutboxOp[]> {
+		const db = await this.#dbPromise;
+		return db.getAll('outbox');
+	}
+	async removeOutbox(seq: number): Promise<void> {
+		const db = await this.#dbPromise;
+		await db.delete('outbox', seq);
+	}
+	async countOutbox(): Promise<number> {
+		const db = await this.#dbPromise;
+		return db.count('outbox');
 	}
 
 	/** ゲストデータを全消去する(会員データへ取り込んだ後などに使う)。 */

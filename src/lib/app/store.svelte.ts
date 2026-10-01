@@ -1,5 +1,5 @@
 import { IndexedDbRepository } from '$lib/repo/indexeddb';
-import { MemberRepository } from '$lib/repo/member';
+import { MemberRepository, type SyncState } from '$lib/repo/member';
 import type { Repository } from '$lib/repo/types';
 import type {
 	AdjustmentInput,
@@ -47,8 +47,12 @@ class Store {
 	settings = $state<AppSettings>({ defaultLeadTimeDays: 7 });
 	now = $state(Date.now());
 	loaded = $state(false);
-	/** 会員がサーバーと同期できず、ローカルの最終同期データを表示している。 */
-	offline = $state(false);
+	/** 会員の同期状態(ゲストは常に synced)。 */
+	syncState = $state<SyncState>('synced');
+	/** 会員のサーバー未送信の操作数。 */
+	pending = $state(0);
+	/** サーバーに拒否されて反映できなかった操作。 */
+	rejected = $state<string[]>([]);
 
 	#repo: Repository | null = null;
 	#contextKey = '';
@@ -72,6 +76,7 @@ class Store {
 			ctx.user && ctx.activeHousehold
 				? new MemberRepository(ctx.user.id, ctx.activeHousehold.id)
 				: new IndexedDbRepository();
+		if (this.#repo instanceof MemberRepository) this.#repo.onSynced = () => void this.reload();
 		// ブラウザにローカル DB を勝手に退避されないよう要求する(拒否されても動作は変わらない)。
 		void navigator.storage?.persist?.().catch(() => undefined);
 		this.loaded = false;
@@ -102,7 +107,21 @@ class Store {
 		]);
 		this.bundles = bundles;
 		this.settings = settings;
-		this.offline = this.repo instanceof MemberRepository && this.repo.offline;
+		const repo = this.repo;
+		this.syncState = repo instanceof MemberRepository ? repo.syncState : 'synced';
+		this.pending = repo instanceof MemberRepository ? repo.pending : 0;
+		this.rejected = repo instanceof MemberRepository ? [...repo.rejected] : [];
+	}
+
+	/** 会員ならサーバーと同期する(通信の回復時などに呼ぶ)。 */
+	async sync(): Promise<void> {
+		if (this.repo instanceof MemberRepository) await this.repo.sync();
+	}
+
+	/** 拒否された操作の通知を閉じる。 */
+	dismissRejected(): void {
+		if (this.repo instanceof MemberRepository) this.repo.rejected = [];
+		this.rejected = [];
 	}
 
 	bundle(itemId: string): ItemBundle | undefined {

@@ -7,6 +7,21 @@ import type {
 	Subscription
 } from '$lib/types';
 
+/**
+ * 会員がサーバーへ未送信の操作(ADR 0009)。送信時は API へそのまま再現する。
+ */
+export interface OutboxOp {
+	/** 送信順(IndexedDB の自動採番)。 */
+	seq: number;
+	method: 'POST' | 'PATCH' | 'DELETE';
+	path: string;
+	body?: unknown;
+	/** 操作した日時。サーバーの日付検証の基準になる。 */
+	at: number;
+	/** 送信を拒否されたときにユーザーへ示す操作名。 */
+	label: string;
+}
+
 /** アプリ全体の設定。ゲストは 1 レコードをローカル保持する。 */
 export interface AppSettings {
 	/** 全体既定のリードタイム(余裕日数)。品目個別値が無いとき使う。 */
@@ -28,8 +43,9 @@ export interface ProductLinkInput {
 	url: string;
 }
 
-/** 新規購入の入力(id はリポジトリが採番)。 */
+/** 新規購入の入力(id は通常リポジトリが採番。定期便の遅延生成は決定的 ID を渡す)。 */
 export interface PurchaseInput {
+	id?: string;
 	itemId: string;
 	volume: number;
 	price: number | null;

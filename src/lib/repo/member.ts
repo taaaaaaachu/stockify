@@ -1,9 +1,10 @@
 import type { ProductLink, Purchase, Subscription } from '$lib/types';
-import { ApiRepository } from './api';
+import { fetchSnapshot, sendOp, serverRefresh, SyncError } from './api';
 import { IndexedDbRepository } from './indexeddb';
 import type {
 	AdjustmentInput,
 	AppSettings,
+	OutboxOp,
 	ProductLinkInput,
 	PurchaseInput,
 	RanOutInput,
@@ -17,57 +18,79 @@ export const MEMBER_DB_PREFIX = 'stockify-m-';
 export const memberDbName = (userId: string, householdId: string) =>
 	`${MEMBER_DB_PREFIX}${userId}-${householdId}`;
 
+/** 同期の状態。offline=サーバーに届かない、auth=ログインし直しが必要。 */
+export type SyncState = 'synced' | 'offline' | 'auth';
+
 /**
- * 会員モード用リポジトリ(ADR 0009 Phase 2)。
- * 読み取りは世帯ごとのローカル IndexedDB から行い、サーバーの全件スナップショットで置き換えて同期する。
- * 書き込みはサーバー API に送り、成功後に同期する(オフライン書き込みは Phase 3)。
- * サーバーに届かないときはローカルの最終同期データで動き、offline を立てる。
+ * 会員モード用リポジトリ(ADR 0009)。
+ * 読み書きは世帯ごとのローカル IndexedDB に対して行い、書き込みは同時に outbox へ積む。
+ * 同期は「サーバーで定期便を遅延生成 → outbox を順に送信 → 全件 pull で置き換え」。
+ * outbox が残っている間はローカルを置き換えない。
  */
 export class MemberRepository implements Repository {
-	readonly #api = new ApiRepository();
 	readonly #local: IndexedDbRepository;
-	/** 直近の同期に失敗し、ローカルの最終同期データを表示している。 */
-	offline = false;
+	readonly #householdId: string;
+	#syncing: Promise<void> | null = null;
+
+	syncState: SyncState = 'synced';
+	/** 未送信の操作数。 */
+	pending = 0;
+	/** サーバーに拒否されて破棄した操作の説明。 */
+	rejected: string[] = [];
+	/** 同期が終わるたびに呼ぶ(画面の再読み込み用)。 */
+	onSynced?: () => void;
 
 	constructor(userId: string, householdId: string) {
 		this.#local = new IndexedDbRepository(memberDbName(userId, householdId));
+		this.#householdId = householdId;
 	}
 
-	/** サーバーで定期便を遅延生成し、全件を取り込む。届かなければローカルで続行する。 */
+	/**
+	 * 起動時: 端末側で定期便を遅延生成してから同期する。端末で作る購入は決定的 ID なので、
+	 * サーバーが同じ回を生成しても重複しない(オフラインでも配送分が反映される)。
+	 * ローカルにデータがあればすぐ表示できるよう同期は待たない(終われば onSynced)。
+	 */
 	async refresh(): Promise<void> {
-		try {
-			await this.#api.refresh();
-			await this.#pull();
-		} catch (e) {
-			this.offline = true;
-			console.warn('サーバーと同期できないため、ローカルのデータを表示します', e);
-		}
+		await this.#local.refresh();
+		const sync = this.sync();
+		if ((await this.#local.listItems()).length === 0) await sync;
 	}
 
-	async #pull(): Promise<void> {
-		await this.#local.replaceAll(await this.#api.exportAll());
-		this.offline = false;
+	/** 同期する。実行中なら同じ処理を待つ。 */
+	sync(): Promise<void> {
+		this.#syncing ??= this.#runSync().finally(() => {
+			this.#syncing = null;
+		});
+		return this.#syncing;
 	}
 
-	/** サーバーへ書き込み、成功したら同期する。 */
-	async #write<T>(send: () => Promise<T>): Promise<T> {
-		let result: T;
+	async #runSync(): Promise<void> {
 		try {
-			result = await send();
+			await serverRefresh(this.#householdId);
+			// 送信中に積まれた操作も続けて送る。
+			for (let ops = await this.#local.listOutbox(); ops.length > 0; ops = await this.#local.listOutbox()) {
+				for (const op of ops) {
+					const outcome = await sendOp(this.#householdId, op);
+					if (outcome.kind === 'retry' || outcome.kind === 'auth') throw new SyncError(outcome.kind, 0);
+					if (outcome.kind === 'rejected') this.rejected.push(`${op.label}: ${outcome.message}`);
+					await this.#local.removeOutbox(op.seq);
+				}
+			}
+			await this.#local.replaceAll(await fetchSnapshot(this.#householdId));
+			this.syncState = 'synced';
 		} catch (e) {
-			// fetch 自体の失敗(TypeError)は通信不可。サーバーのエラーはそのまま伝える。
-			if (e instanceof TypeError)
-				throw new Error('オフラインのため保存できません。通信できる状態で再度お試しください。', {
-					cause: e
-				});
-			throw e;
+			this.syncState = e instanceof SyncError && e.kind === 'auth' ? 'auth' : 'offline';
+			if (!(e instanceof SyncError) && !(e instanceof TypeError)) console.error('同期に失敗しました', e);
 		}
-		try {
-			await this.#pull();
-		} catch {
-			this.offline = true;
-		}
-		return result;
+		this.pending = await this.#local.countOutbox();
+		this.onSynced?.();
+	}
+
+	/** ローカルへ反映済みの操作を outbox に積み、裏で同期を始める。 */
+	async #enqueue(label: string, method: OutboxOp['method'], path: string, body?: unknown): Promise<void> {
+		await this.#local.enqueue({ method, path, body, at: Date.now(), label });
+		this.pending++;
+		void this.sync();
 	}
 
 	// --- 読み取り(ローカル) ---
@@ -83,28 +106,99 @@ export class MemberRepository implements Repository {
 	getBundle = (itemId: string) => this.#local.getBundle(itemId);
 	exportAll = () => this.#local.exportAll();
 
-	// --- 書き込み(サーバー) ---
-	updateSettings = (patch: Partial<AppSettings>) => this.#write(() => this.#api.updateSettings(patch));
-	createItem = (input: StockItemInput) => this.#write(() => this.#api.createItem(input));
-	updateItem = (id: string, patch: Partial<StockItemInput>) =>
-		this.#write(() => this.#api.updateItem(id, patch));
-	deleteItem = (id: string) => this.#write(() => this.#api.deleteItem(id));
-	createProductLink = (input: ProductLinkInput) => this.#write(() => this.#api.createProductLink(input));
-	updateProductLink = (id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>) =>
-		this.#write(() => this.#api.updateProductLink(id, patch));
-	deleteProductLink = (id: string) => this.#write(() => this.#api.deleteProductLink(id));
-	moveProductLink = (id: string, direction: 'up' | 'down') =>
-		this.#write(() => this.#api.moveProductLink(id, direction));
-	createPurchase = (input: PurchaseInput) => this.#write(() => this.#api.createPurchase(input));
-	updatePurchase = (id: string, patch: Partial<Omit<Purchase, 'id' | 'itemId'>>) =>
-		this.#write(() => this.#api.updatePurchase(id, patch));
-	deletePurchase = (id: string) => this.#write(() => this.#api.deletePurchase(id));
-	createRanOutEvent = (input: RanOutInput) => this.#write(() => this.#api.createRanOutEvent(input));
-	deleteRanOutEvent = (id: string) => this.#write(() => this.#api.deleteRanOutEvent(id));
-	createAdjustment = (input: AdjustmentInput) => this.#write(() => this.#api.createAdjustment(input));
-	deleteAdjustment = (id: string) => this.#write(() => this.#api.deleteAdjustment(id));
-	createSubscription = (input: SubscriptionInput) => this.#write(() => this.#api.createSubscription(input));
-	updateSubscription = (id: string, patch: Partial<Omit<Subscription, 'id' | 'itemId'>>) =>
-		this.#write(() => this.#api.updateSubscription(id, patch));
-	deleteSubscription = (id: string) => this.#write(() => this.#api.deleteSubscription(id));
+	// --- 書き込み(ローカル + outbox) ---
+	async updateSettings(patch: Partial<AppSettings>) {
+		const settings = await this.#local.updateSettings(patch);
+		await this.#enqueue('設定の変更', 'PATCH', '/api/settings', patch);
+		return settings;
+	}
+
+	async createItem(input: StockItemInput) {
+		const item = await this.#local.createItem(input);
+		await this.#enqueue(`品目「${input.name}」の追加`, 'POST', '/api/items', { ...input, id: item.id });
+		return item;
+	}
+	async updateItem(id: string, patch: Partial<StockItemInput>) {
+		const item = await this.#local.updateItem(id, patch);
+		await this.#enqueue(`品目「${item.name}」の変更`, 'PATCH', `/api/items/${id}`, patch);
+		return item;
+	}
+	async deleteItem(id: string) {
+		await this.#local.deleteItem(id);
+		await this.#enqueue('品目の削除', 'DELETE', `/api/items/${id}`);
+	}
+
+	async createProductLink(input: ProductLinkInput) {
+		const link = await this.#local.createProductLink(input);
+		await this.#enqueue('商品リンクの追加', 'POST', '/api/product-links', { ...input, id: link.id });
+		return link;
+	}
+	async updateProductLink(id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>) {
+		const link = await this.#local.updateProductLink(id, patch);
+		await this.#enqueue('商品リンクの変更', 'PATCH', `/api/product-links/${id}`, patch);
+		return link;
+	}
+	async deleteProductLink(id: string) {
+		await this.#local.deleteProductLink(id);
+		await this.#enqueue('商品リンクの削除', 'DELETE', `/api/product-links/${id}`);
+	}
+	async moveProductLink(id: string, direction: 'up' | 'down') {
+		const link = await this.#local.getProductLink(id);
+		if (!link) return;
+		await this.#local.moveProductLink(id, direction);
+		await this.#enqueue('商品リンクの並べ替え', 'POST', `/api/product-links/${id}/move`, {
+			direction,
+			fromPosition: link.position
+		});
+	}
+
+	async createPurchase(input: PurchaseInput) {
+		const purchase = await this.#local.createPurchase(input);
+		await this.#enqueue('購入の追加', 'POST', '/api/purchases', { ...input, id: purchase.id });
+		return purchase;
+	}
+	async updatePurchase(id: string, patch: Partial<Omit<Purchase, 'id' | 'itemId'>>) {
+		const purchase = await this.#local.updatePurchase(id, patch);
+		await this.#enqueue('購入の変更', 'PATCH', `/api/purchases/${id}`, patch);
+		return purchase;
+	}
+	async deletePurchase(id: string) {
+		await this.#local.deletePurchase(id);
+		await this.#enqueue('購入の削除', 'DELETE', `/api/purchases/${id}`);
+	}
+
+	async createRanOutEvent(input: RanOutInput) {
+		const event = await this.#local.createRanOutEvent(input);
+		await this.#enqueue('使い切りの記録', 'POST', '/api/ranouts', { ...input, id: event.id });
+		return event;
+	}
+	async deleteRanOutEvent(id: string) {
+		await this.#local.deleteRanOutEvent(id);
+		await this.#enqueue('使い切りの削除', 'DELETE', `/api/ranouts/${id}`);
+	}
+
+	async createAdjustment(input: AdjustmentInput) {
+		const adjustment = await this.#local.createAdjustment(input);
+		await this.#enqueue('残量補正の記録', 'POST', '/api/adjustments', { ...input, id: adjustment.id });
+		return adjustment;
+	}
+	async deleteAdjustment(id: string) {
+		await this.#local.deleteAdjustment(id);
+		await this.#enqueue('残量補正の削除', 'DELETE', `/api/adjustments/${id}`);
+	}
+
+	async createSubscription(input: SubscriptionInput) {
+		const subscription = await this.#local.createSubscription(input);
+		await this.#enqueue('定期便の追加', 'POST', '/api/subscriptions', { ...input, id: subscription.id });
+		return subscription;
+	}
+	async updateSubscription(id: string, patch: Partial<Omit<Subscription, 'id' | 'itemId'>>) {
+		const subscription = await this.#local.updateSubscription(id, patch);
+		await this.#enqueue('定期便の変更', 'PATCH', `/api/subscriptions/${id}`, patch);
+		return subscription;
+	}
+	async deleteSubscription(id: string) {
+		await this.#local.deleteSubscription(id);
+		await this.#enqueue('定期便の削除', 'DELETE', `/api/subscriptions/${id}`);
+	}
 }
