@@ -37,7 +37,8 @@ describe('PWA manifest', () => {
 
 	it('ナビゲーションへオフライン応答できるService Workerを提供する', () => {
 		expect(serviceWorkerSource).toContain("sw.addEventListener('fetch'");
-		expect(serviceWorkerSource).toContain("event.request.mode !== 'navigate'");
+		expect(serviceWorkerSource).toContain('networkFirstPage(event.request)');
+		expect(serviceWorkerSource).toContain('cache.addAll([...PRECACHED])');
 		expect(serviceWorkerSource).toContain("const OFFLINE_URL = '/offline.html'");
 		expect(offlinePage).toContain('<title>オフライン | Stockify</title>');
 	});

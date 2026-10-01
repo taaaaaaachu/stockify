@@ -1,10 +1,16 @@
 /// <reference types="@sveltejs/kit" />
 /// <reference lib="webworker" />
 
+import { build, files, version } from '$service-worker';
+import { strategyFor } from '$lib/sw/strategy';
+
 // 型のためのキャスト(Service Worker のグローバル)。
 const sw = self as unknown as ServiceWorkerGlobalScope;
-const OFFLINE_CACHE = 'stockify-offline-v1';
+// 版ごとにキャッシュを分ける。古い HTML が消えた旧アセットを参照しないよう、ページも版ごと(ADR 0009)。
+const ASSET_CACHE = `stockify-assets-${version}`;
+const PAGE_CACHE = `stockify-pages-${version}`;
 const OFFLINE_URL = '/offline.html';
+const PRECACHED = new Set([...build, ...files]);
 
 interface PushPayload {
 	title?: string;
@@ -12,12 +18,11 @@ interface PushPayload {
 	url?: string;
 }
 
-// Android Chrome が WebAPK として扱えるよう、ナビゲーションをオフラインでも応答可能にする。
-// 認証済み画面や API レスポンスは保存せず、固定のオフラインページだけをキャッシュする。
+// アプリ本体(ビルド成果物・静的ファイル)をプリキャッシュし、オフラインでも起動できるようにする。
 sw.addEventListener('install', (event: ExtendableEvent) => {
 	event.waitUntil(
 		Promise.all([
-			caches.open(OFFLINE_CACHE).then((cache) => cache.add(OFFLINE_URL)),
+			caches.open(ASSET_CACHE).then((cache) => cache.addAll([...PRECACHED])),
 			sw.skipWaiting()
 		])
 	);
@@ -31,7 +36,10 @@ sw.addEventListener('activate', (event: ExtendableEvent) => {
 				.then((names) =>
 					Promise.all(
 						names
-							.filter((name) => name.startsWith('stockify-offline-') && name !== OFFLINE_CACHE)
+							.filter(
+								(name) =>
+									name.startsWith('stockify-') && name !== ASSET_CACHE && name !== PAGE_CACHE
+							)
 							.map((name) => caches.delete(name))
 					)
 				),
@@ -40,21 +48,46 @@ sw.addEventListener('activate', (event: ExtendableEvent) => {
 	);
 });
 
-sw.addEventListener('fetch', (event: FetchEvent) => {
-	if (event.request.mode !== 'navigate') return;
+async function cacheFirst(request: Request): Promise<Response> {
+	return (await caches.match(request, { cacheName: ASSET_CACHE })) ?? fetch(request);
+}
 
-	event.respondWith(
-		fetch(event.request).catch(async () => {
-			const offlinePage = await caches.match(OFFLINE_URL);
-			return (
-				offlinePage ??
-				new Response('オフラインです。通信状態を確認してから、もう一度お試しください。', {
-					status: 503,
-					headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-				})
-			);
-		})
-	);
+// 画面遷移は network-first。成功した HTML を保存し、通信できなければ保存済みを返す。
+async function networkFirstPage(request: Request): Promise<Response> {
+	try {
+		const response = await fetch(request);
+		if (response.ok && !response.redirected && response.type === 'basic') {
+			const cache = await caches.open(PAGE_CACHE);
+			await cache.put(request, response.clone());
+		}
+		return response;
+	} catch {
+		const cached =
+			(await caches.match(request, { cacheName: PAGE_CACHE })) ??
+			(await caches.match(OFFLINE_URL, { cacheName: ASSET_CACHE }));
+		return (
+			cached ??
+			new Response('オフラインです。通信状態を確認してから、もう一度お試しください。', {
+				status: 503,
+				headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+			})
+		);
+	}
+}
+
+sw.addEventListener('fetch', (event: FetchEvent) => {
+	switch (strategyFor(event.request, sw.location.origin, PRECACHED)) {
+		case 'precache':
+			event.respondWith(cacheFirst(event.request));
+			return;
+		case 'page':
+			event.respondWith(networkFirstPage(event.request));
+			return;
+		case 'clear-pages':
+			// ページ HTML にはユーザー名等が埋め込まれるため、認証状態が変わるときに消す。
+			event.waitUntil(caches.delete(PAGE_CACHE));
+			return;
+	}
 });
 
 // サーバーからの Web Push を受けて通知を表示する。
