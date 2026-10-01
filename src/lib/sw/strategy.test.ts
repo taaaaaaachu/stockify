@@ -24,10 +24,15 @@ describe('strategyFor', () => {
 		).toBe('network');
 	});
 
-	it('認証状態を変える POST でページキャッシュを消す', () => {
-		for (const path of ['/login', '/register', '/logout', '/api/account/delete']) {
+	it('ログイン・登録の POST でページキャッシュを消す', () => {
+		for (const path of ['/login', '/register']) {
 			expect(strategyFor(req(path, 'POST', 'navigate'), origin, precached)).toBe('clear-pages');
 		}
+	});
+
+	it('ログアウト・アカウント削除で会員データも消す', () => {
+		expect(strategyFor(req('/logout', 'POST', 'navigate'), origin, precached)).toBe('clear-user-data');
+		expect(strategyFor(req('/api/account/delete', 'DELETE'), origin, precached)).toBe('clear-user-data');
 		expect(strategyFor(req('/logout', 'GET', 'navigate'), origin, precached)).toBe('page');
 	});
 

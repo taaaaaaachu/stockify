@@ -9,11 +9,9 @@ import type {
 import type {
 	AdjustmentInput,
 	AppSettings,
-	ItemBundle,
 	PurchaseInput,
 	ProductLinkInput,
 	RanOutInput,
-	Repository,
 	Snapshot,
 	StockItemInput,
 	SubscriptionInput
@@ -38,189 +36,51 @@ async function req<T>(input: string, init?: RequestInit): Promise<T> {
 	return res.json() as Promise<T>;
 }
 
-interface State {
-	settings: AppSettings;
-	bundles: ItemBundle[];
-}
+const send = <T>(method: string, url: string, body?: unknown) =>
+	req<T>(url, { method, body: body === undefined ? undefined : JSON.stringify(body) });
 
 /**
- * 会員モード用リポジトリ。サーバーの /api エンドポイント経由で、現在の世帯の
- * データを読み書きする。読み取りは GET /api/state を一度だけ取得してメモ化し、
- * 変更操作のたびに破棄する。
+ * 会員の在庫 API クライアント。現在の世帯への書き込みと、同期用の全件取得を担う
+ * (読み取りはローカル DB から行う。ADR 0009)。
  */
-export class ApiRepository implements Repository {
-	#state: Promise<State> | null = null;
-
-	#fetchState(): Promise<State> {
-		if (!this.#state) this.#state = req<State>('/api/state');
-		return this.#state;
-	}
-	#invalidate(): void {
-		this.#state = null;
-	}
-
+export class ApiRepository {
+	/** 定期便の遅延生成(ADR 0002)をサーバーで行う。 */
 	async refresh(): Promise<void> {
-		await req('/api/refresh', { method: 'POST' });
-		this.#invalidate();
+		await send('POST', '/api/refresh');
 	}
+	/** 現在の世帯の全データ(同期の取り込み元)。 */
+	exportAll = () => req<Snapshot>('/api/state/export');
 
-	async getSettings(): Promise<AppSettings> {
-		return (await this.#fetchState()).settings;
-	}
-	async updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
-		const r = await req<AppSettings>('/api/settings', {
-			method: 'PATCH',
-			body: JSON.stringify(patch)
-		});
-		this.#invalidate();
-		return r;
-	}
+	updateSettings = (patch: Partial<AppSettings>) => send<AppSettings>('PATCH', '/api/settings', patch);
 
-	async listBundles(): Promise<ItemBundle[]> {
-		return (await this.#fetchState()).bundles;
-	}
-	async getBundle(itemId: string): Promise<ItemBundle | null> {
-		const { bundles } = await this.#fetchState();
-		return bundles.find((b) => b.item.id === itemId) ?? null;
-	}
+	createItem = (input: StockItemInput) => send<StockItem>('POST', '/api/items', input);
+	updateItem = (id: string, patch: Partial<StockItemInput>) =>
+		send<StockItem>('PATCH', `/api/items/${id}`, patch);
+	deleteItem = (id: string) => send<void>('DELETE', `/api/items/${id}`);
 
-	async listItems(): Promise<StockItem[]> {
-		return (await this.#fetchState()).bundles.map((b) => b.item);
-	}
-	async getItem(id: string): Promise<StockItem | null> {
-		return (await this.getBundle(id))?.item ?? null;
-	}
-	async createItem(input: StockItemInput): Promise<StockItem> {
-		const r = await req<StockItem>('/api/items', { method: 'POST', body: JSON.stringify(input) });
-		this.#invalidate();
-		return r;
-	}
-	async updateItem(id: string, patch: Partial<StockItemInput>): Promise<StockItem> {
-		const r = await req<StockItem>(`/api/items/${id}`, {
-			method: 'PATCH',
-			body: JSON.stringify(patch)
-		});
-		this.#invalidate();
-		return r;
-	}
-	async deleteItem(id: string): Promise<void> {
-		await req<void>(`/api/items/${id}`, { method: 'DELETE' });
-		this.#invalidate();
-	}
+	createProductLink = (input: ProductLinkInput) => send<ProductLink>('POST', '/api/product-links', input);
+	updateProductLink = (id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>) =>
+		send<ProductLink>('PATCH', `/api/product-links/${id}`, patch);
+	deleteProductLink = (id: string) => send<void>('DELETE', `/api/product-links/${id}`);
+	moveProductLink = async (id: string, direction: 'up' | 'down') => {
+		await send('POST', `/api/product-links/${id}/move`, { direction });
+	};
 
-	async listProductLinks(itemId: string): Promise<ProductLink[]> {
-		return (await this.getBundle(itemId))?.productLinks ?? [];
-	}
-	async createProductLink(input: ProductLinkInput): Promise<ProductLink> {
-		const r = await req<ProductLink>('/api/product-links', { method: 'POST', body: JSON.stringify(input) });
-		this.#invalidate();
-		return r;
-	}
-	async updateProductLink(id: string, patch: Partial<Pick<ProductLink, 'label' | 'url'>>): Promise<ProductLink> {
-		const r = await req<ProductLink>(`/api/product-links/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
-		this.#invalidate();
-		return r;
-	}
-	async deleteProductLink(id: string): Promise<void> {
-		await req<void>(`/api/product-links/${id}`, { method: 'DELETE' });
-		this.#invalidate();
-	}
-	async moveProductLink(id: string, direction: 'up' | 'down'): Promise<void> {
-		await req(`/api/product-links/${id}/move`, { method: 'POST', body: JSON.stringify({ direction }) });
-		this.#invalidate();
-	}
+	createPurchase = (input: PurchaseInput) => send<Purchase>('POST', '/api/purchases', input);
+	updatePurchase = (id: string, patch: Partial<Omit<Purchase, 'id' | 'itemId'>>) =>
+		send<Purchase>('PATCH', `/api/purchases/${id}`, patch);
+	deletePurchase = (id: string) => send<void>('DELETE', `/api/purchases/${id}`);
 
-	async listPurchases(itemId: string): Promise<Purchase[]> {
-		return (await this.getBundle(itemId))?.purchases ?? [];
-	}
-	async createPurchase(input: PurchaseInput): Promise<Purchase> {
-		const r = await req<Purchase>('/api/purchases', { method: 'POST', body: JSON.stringify(input) });
-		this.#invalidate();
-		return r;
-	}
-	async updatePurchase(
-		id: string,
-		patch: Partial<Omit<Purchase, 'id' | 'itemId'>>
-	): Promise<Purchase> {
-		const r = await req<Purchase>(`/api/purchases/${id}`, {
-			method: 'PATCH',
-			body: JSON.stringify(patch)
-		});
-		this.#invalidate();
-		return r;
-	}
-	async deletePurchase(id: string): Promise<void> {
-		await req<void>(`/api/purchases/${id}`, { method: 'DELETE' });
-		this.#invalidate();
-	}
+	createRanOutEvent = (input: RanOutInput) => send<RanOutEvent>('POST', '/api/ranouts', input);
+	deleteRanOutEvent = (id: string) => send<void>('DELETE', `/api/ranouts/${id}`);
 
-	async listRanOutEvents(itemId: string): Promise<RanOutEvent[]> {
-		return (await this.getBundle(itemId))?.ranOutEvents ?? [];
-	}
-	async createRanOutEvent(input: RanOutInput): Promise<RanOutEvent> {
-		const r = await req<RanOutEvent>('/api/ranouts', { method: 'POST', body: JSON.stringify(input) });
-		this.#invalidate();
-		return r;
-	}
-	async deleteRanOutEvent(id: string): Promise<void> {
-		await req<void>(`/api/ranouts/${id}`, { method: 'DELETE' });
-		this.#invalidate();
-	}
+	createAdjustment = (input: AdjustmentInput) =>
+		send<RemainingAdjustment>('POST', '/api/adjustments', input);
+	deleteAdjustment = (id: string) => send<void>('DELETE', `/api/adjustments/${id}`);
 
-	async listAdjustments(itemId: string): Promise<RemainingAdjustment[]> {
-		return (await this.getBundle(itemId))?.adjustments ?? [];
-	}
-	async createAdjustment(input: AdjustmentInput): Promise<RemainingAdjustment> {
-		const r = await req<RemainingAdjustment>('/api/adjustments', {
-			method: 'POST',
-			body: JSON.stringify(input)
-		});
-		this.#invalidate();
-		return r;
-	}
-	async deleteAdjustment(id: string): Promise<void> {
-		await req<void>(`/api/adjustments/${id}`, { method: 'DELETE' });
-		this.#invalidate();
-	}
-
-	async listSubscriptions(itemId: string): Promise<Subscription[]> {
-		return (await this.getBundle(itemId))?.subscriptions ?? [];
-	}
-	async createSubscription(input: SubscriptionInput): Promise<Subscription> {
-		const r = await req<Subscription>('/api/subscriptions', {
-			method: 'POST',
-			body: JSON.stringify(input)
-		});
-		this.#invalidate();
-		return r;
-	}
-	async updateSubscription(
-		id: string,
-		patch: Partial<Omit<Subscription, 'id' | 'itemId'>>
-	): Promise<Subscription> {
-		const r = await req<Subscription>(`/api/subscriptions/${id}`, {
-			method: 'PATCH',
-			body: JSON.stringify(patch)
-		});
-		this.#invalidate();
-		return r;
-	}
-	async deleteSubscription(id: string): Promise<void> {
-		await req<void>(`/api/subscriptions/${id}`, { method: 'DELETE' });
-		this.#invalidate();
-	}
-
-	async exportAll(): Promise<Snapshot> {
-		return req<Snapshot>('/api/state/export');
-	}
-
-	/** ゲストのスナップショットを現在の世帯へ取り込む。 */
-	async importSnapshot(snapshot: Snapshot): Promise<{ items: number }> {
-		const r = await req<{ items: number }>('/api/import', {
-			method: 'POST',
-			body: JSON.stringify(snapshot)
-		});
-		this.#invalidate();
-		return r;
-	}
+	createSubscription = (input: SubscriptionInput) =>
+		send<Subscription>('POST', '/api/subscriptions', input);
+	updateSubscription = (id: string, patch: Partial<Omit<Subscription, 'id' | 'itemId'>>) =>
+		send<Subscription>('PATCH', `/api/subscriptions/${id}`, patch);
+	deleteSubscription = (id: string) => send<void>('DELETE', `/api/subscriptions/${id}`);
 }

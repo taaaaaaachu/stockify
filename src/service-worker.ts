@@ -3,6 +3,7 @@
 
 import { build, files, version } from '$service-worker';
 import { strategyFor } from '$lib/sw/strategy';
+import { MEMBER_DB_PREFIX } from '$lib/repo/member';
 
 // 型のためのキャスト(Service Worker のグローバル)。
 const sw = self as unknown as ServiceWorkerGlobalScope;
@@ -87,8 +88,27 @@ sw.addEventListener('fetch', (event: FetchEvent) => {
 			// ページ HTML にはユーザー名等が埋め込まれるため、認証状態が変わるときに消す。
 			event.waitUntil(caches.delete(PAGE_CACHE));
 			return;
+		case 'clear-user-data':
+			event.waitUntil(Promise.all([caches.delete(PAGE_CACHE), deleteMemberDatabases()]));
+			return;
 	}
 });
+
+// 共有端末に在庫データを残さないよう、ログアウト時に会員のローカル DB を消す(ADR 0009)。
+async function deleteMemberDatabases(): Promise<void> {
+	const dbs = await indexedDB.databases();
+	await Promise.all(
+		dbs
+			.filter((db) => db.name?.startsWith(MEMBER_DB_PREFIX))
+			.map(
+				(db) =>
+					new Promise<void>((resolve) => {
+						const request = indexedDB.deleteDatabase(db.name!);
+						request.onsuccess = request.onerror = () => resolve();
+					})
+			)
+	);
+}
 
 // サーバーからの Web Push を受けて通知を表示する。
 sw.addEventListener('push', (event: PushEvent) => {

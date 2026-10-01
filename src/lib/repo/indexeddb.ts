@@ -49,8 +49,13 @@ function newId(): string {
 export class IndexedDbRepository implements Repository {
 	#dbPromise: Promise<IDBPDatabase<StockifyDB>>;
 
-	constructor() {
-		this.#dbPromise = openDB<StockifyDB>(DB_NAME, DB_VERSION, {
+	/** @param name DB 名。ゲストは既定、会員は世帯ごとに別名(ADR 0009)。 */
+	constructor(name = DB_NAME) {
+		this.#dbPromise = openDB<StockifyDB>(name, DB_VERSION, {
+			// ログアウト時の DB 削除を妨げないよう、要求されたら接続を閉じる。
+			blocking(_current, _blocked, event) {
+				(event.target as IDBDatabase).close();
+			},
 			upgrade(db) {
 				if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
 				if (!db.objectStoreNames.contains('items')) db.createObjectStore('items', { keyPath: 'id' });
@@ -310,6 +315,27 @@ export class IndexedDbRepository implements Repository {
 				db.getAll('subscriptions')
 			]);
 		return { settings, items, productLinks, purchases, ranOutEvents, adjustments, subscriptions };
+	}
+
+	/** 全データをスナップショットで置き換える(会員のサーバー → ローカル取り込み)。 */
+	async replaceAll(snapshot: Snapshot): Promise<void> {
+		const db = await this.#dbPromise;
+		const stores = ['settings', 'items', 'purchases', 'ranouts', 'adjustments', 'subscriptions', 'productLinks'] as const;
+		const tx = db.transaction(stores, 'readwrite');
+		for (const store of stores) await tx.objectStore(store).clear();
+		await tx.objectStore('settings').put(snapshot.settings, SETTINGS_KEY);
+		const rows = [
+			['items', snapshot.items],
+			['purchases', snapshot.purchases],
+			['ranouts', snapshot.ranOutEvents],
+			['adjustments', snapshot.adjustments],
+			['subscriptions', snapshot.subscriptions],
+			['productLinks', snapshot.productLinks ?? []]
+		] as const;
+		for (const [store, values] of rows) {
+			for (const value of values) await tx.objectStore(store).put(value as never);
+		}
+		await tx.done;
 	}
 
 	/** ゲストデータを全消去する(会員データへ取り込んだ後などに使う)。 */

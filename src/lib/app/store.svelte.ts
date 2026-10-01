@@ -1,5 +1,5 @@
 import { IndexedDbRepository } from '$lib/repo/indexeddb';
-import { ApiRepository } from '$lib/repo/api';
+import { MemberRepository } from '$lib/repo/member';
 import type { Repository } from '$lib/repo/types';
 import type {
 	AdjustmentInput,
@@ -47,6 +47,8 @@ class Store {
 	settings = $state<AppSettings>({ defaultLeadTimeDays: 7 });
 	now = $state(Date.now());
 	loaded = $state(false);
+	/** 会員がサーバーと同期できず、ローカルの最終同期データを表示している。 */
+	offline = $state(false);
 
 	#repo: Repository | null = null;
 	#contextKey = '';
@@ -66,7 +68,12 @@ class Store {
 		if (key === this.#contextKey) return;
 		this.#contextKey = key;
 		this.mode = ctx.user && ctx.activeHousehold ? 'member' : 'guest';
-		this.#repo = this.mode === 'member' ? new ApiRepository() : new IndexedDbRepository();
+		this.#repo =
+			ctx.user && ctx.activeHousehold
+				? new MemberRepository(ctx.user.id, ctx.activeHousehold.id)
+				: new IndexedDbRepository();
+		// ブラウザにローカル DB を勝手に退避されないよう要求する(拒否されても動作は変わらない)。
+		void navigator.storage?.persist?.().catch(() => undefined);
 		this.loaded = false;
 		void this.load();
 	}
@@ -95,6 +102,7 @@ class Store {
 		]);
 		this.bundles = bundles;
 		this.settings = settings;
+		this.offline = this.repo instanceof MemberRepository && this.repo.offline;
 	}
 
 	bundle(itemId: string): ItemBundle | undefined {

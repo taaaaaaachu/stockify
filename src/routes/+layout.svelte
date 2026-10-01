@@ -100,6 +100,15 @@
 {/if}
 
 <main style="max-width:48rem; margin:0 auto; padding:1rem;">
+	{#if store.offline}
+		<p
+			role="status"
+			style="margin:0 0 1rem; padding:0.5rem 0.75rem; border-radius:0.5rem;
+			       border:1px solid var(--warn); color:var(--warn); background:var(--card); font-size:0.85rem;"
+		>
+			オフラインのため、最後に同期したデータを表示しています。変更は通信できるときに行ってください。
+		</p>
+	{/if}
 	{#if data.user?.mustChangePassword}
 		<PasswordChangeForm forced={true} />
 	{:else}
