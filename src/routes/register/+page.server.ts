@@ -7,22 +7,13 @@ import {
 } from '$lib/server/auth';
 import { setSessionCookie, setHouseholdCookie } from '$lib/server/sessionCookie';
 import { db } from '$lib/server/db';
-import { countUsers, registerUser } from '$lib/server/households';
+import { countUsers, registerUser, REGISTER_ERROR_MESSAGES } from '$lib/server/households';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
 	if (locals.user) throw redirect(303, '/');
 	// ユーザーが 0 人のときだけ招待コードなしで登録できる(ブートストラップ)。
 	return { requireInvite: countUsers(db) > 0 };
-};
-
-const ERROR_MESSAGES: Record<string, string> = {
-	invite_invalid: '招待コードが正しくありません。',
-	invite_expired: 'この招待コードは有効期限が切れています。',
-	invite_used: 'この招待コードは既に使われています。',
-	invite_revoked: 'この招待コードは無効化されています。',
-	invite_required: '現在は招待コードが必要です。',
-	username_taken: 'このユーザー名は既に使われています。'
 };
 
 export const actions: Actions = {
@@ -53,7 +44,7 @@ export const actions: Actions = {
 		});
 		if (!result.ok) {
 			const status = result.error === 'username_taken' ? 409 : 400;
-			return fail(status, { username, error: ERROR_MESSAGES[result.error] });
+			return fail(status, { username, error: REGISTER_ERROR_MESSAGES[result.error] });
 		}
 
 		const { token, expiresAt } = createSession(result.user.id);

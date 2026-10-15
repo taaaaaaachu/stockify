@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { eq } from 'drizzle-orm';
 import { createDb, type Db } from './db';
+import { users, passkeys, invites } from './db/schema';
 import {
 	countUsers,
 	createHousehold,
@@ -18,7 +20,8 @@ import {
 	listPendingOwnershipTransfers,
 	listHouseholdSummaries,
 	removeHouseholdMember,
-	setHouseholdNotifyEnabled
+	setHouseholdNotifyEnabled,
+	precheckRegistration
 } from './households';
 
 let db: Db;
@@ -266,5 +269,59 @@ describe('inviteState', () => {
 	it('期限切れを判定する', () => {
 		expect(inviteState({ usedBy: null, expiresAt: 100, revokedAt: null }, 200)).toBe('expired');
 		expect(inviteState({ usedBy: null, expiresAt: 300, revokedAt: null }, 200)).toBe('active');
+	});
+});
+
+describe('パスキーでの登録', () => {
+	const passkey = { id: 'cred-1', publicKey: Buffer.from([1]), counter: 0, transports: null, name: 'iPhone', createdAt: 0 };
+
+	it('ブートストラップでも世帯が作られ、指定 id のパスワードなしユーザーにパスキーが付く', () => {
+		const r = registerUser(db, { id: 'fixed-id', username: 'alice', passwordHash: null, passkey, requireInvite: false, householdName: '実家' });
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.user.instanceRole).toBe('super_admin');
+		expect(listUserHouseholds(db, 'fixed-id')).toMatchObject([{ id: r.householdId, name: '実家', role: 'owner' }]);
+		expect(db.select().from(users).where(eq(users.id, 'fixed-id')).get()?.passwordHash).toBeNull();
+		expect(db.select().from(passkeys).all().map((p) => [p.id, p.userId])).toEqual([['cred-1', 'fixed-id']]);
+	});
+
+	it('招待経由ならその世帯に参加し、招待が消費される', () => {
+		const owner = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		if (!owner.ok) throw new Error('setup');
+		const invite = createInvite(db, owner.householdId, owner.user.id, null);
+		const r = registerUser(db, { username: 'bob', passwordHash: null, passkey, requireInvite: true, inviteCode: invite.code });
+		expect(r).toMatchObject({ ok: true, householdId: owner.householdId });
+		expect(db.select().from(invites).where(eq(invites.id, invite.id)).get()?.usedAt).toBeTypeOf('number');
+	});
+
+	it('招待が不正・ブートストラップ済みなら、ユーザーもパスキーも保存されない', () => {
+		registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		expect(registerUser(db, { username: 'pk', passwordHash: null, passkey, requireInvite: true, inviteCode: 'nope' })).toEqual({ ok: false, error: 'invite_invalid' });
+		expect(registerUser(db, { username: 'pk', passwordHash: null, passkey, requireInvite: false })).toEqual({ ok: false, error: 'invite_required' });
+		expect(db.select().from(passkeys).all()).toHaveLength(0);
+		expect(countUsers(db)).toBe(1);
+	});
+
+	it('パスワードもパスキーも無い登録は例外', () => {
+		expect(() => registerUser(db, { username: 'x', passwordHash: null, requireInvite: false })).toThrow();
+	});
+});
+
+describe('precheckRegistration', () => {
+	it('招待の不備とユーザー名重複を事前に返し、問題なければ null', () => {
+		const owner = registerUser(db, { username: 'owner', passwordHash: 'x', requireInvite: false });
+		if (!owner.ok) throw new Error('setup');
+		const invite = createInvite(db, owner.householdId, owner.user.id, null);
+		const expired = createInvite(db, owner.householdId, owner.user.id, Date.now() - 1);
+		const revoked = createInvite(db, owner.householdId, owner.user.id, null);
+		revokeInvite(db, owner.householdId, revoked.id);
+
+		expect(precheckRegistration(db, { username: 'new', requireInvite: true, inviteCode: 'nope' })).toBe('invite_invalid');
+		expect(precheckRegistration(db, { username: 'new', requireInvite: true, inviteCode: expired.code })).toBe('invite_expired');
+		expect(precheckRegistration(db, { username: 'new', requireInvite: true, inviteCode: revoked.code })).toBe('invite_revoked');
+		expect(precheckRegistration(db, { username: 'owner', requireInvite: true, inviteCode: invite.code })).toBe('username_taken');
+		expect(precheckRegistration(db, { username: 'new', requireInvite: true, inviteCode: invite.code })).toBeNull();
+		// 事前検証では招待を消費しない。
+		expect(registerUser(db, { username: 'new', passwordHash: 'x', requireInvite: true, inviteCode: invite.code }).ok).toBe(true);
 	});
 });

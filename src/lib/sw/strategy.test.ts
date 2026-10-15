@@ -25,7 +25,7 @@ describe('strategyFor', () => {
 	});
 
 	it('ログイン・登録の POST でページキャッシュを消す', () => {
-		for (const path of ['/login', '/register']) {
+		for (const path of ['/login', '/register', '/api/passkey/login', '/api/passkey/register/verify']) {
 			expect(strategyFor(req(path, 'POST', 'navigate'), origin, precached)).toBe('clear-pages');
 		}
 	});

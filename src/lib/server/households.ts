@@ -9,14 +9,16 @@ import {
 	ownershipTransfers,
 	invites,
 	stockItems,
+	passkeys,
 	type UserRow,
+	type PasskeyRow,
 	type HouseholdRow,
 	type InviteRow,
 	type OwnershipTransferRow
 } from './db/schema';
 import type { HouseholdRole } from '$lib/rbac';
 
-function newId(): string {
+export function newId(): string {
 	return randomBytes(16).toString('hex');
 }
 
@@ -426,18 +428,50 @@ export function deleteInvite(db: Db, householdId: string, id: string): boolean {
 
 // --- ユーザー登録(ブートストラップ or 招待経由) ---
 
+export type RegisterError =
+	| 'invite_invalid'
+	| 'invite_expired'
+	| 'invite_used'
+	| 'invite_revoked'
+	| 'invite_required'
+	| 'username_taken';
+export const REGISTER_ERROR_MESSAGES: Record<RegisterError, string> = {
+	invite_invalid: '招待コードが正しくありません。',
+	invite_expired: 'この招待コードは有効期限が切れています。',
+	invite_used: 'この招待コードは既に使われています。',
+	invite_revoked: 'この招待コードは無効化されています。',
+	invite_required: '現在は招待コードが必要です。',
+	username_taken: 'このユーザー名は既に使われています。'
+};
 export type RegisterResult =
 	| { ok: true; user: UserRow; householdId: string }
-	| {
-			ok: false;
-			error:
-				| 'invite_invalid'
-				| 'invite_expired'
-				| 'invite_used'
-				| 'invite_revoked'
-				| 'invite_required'
-				| 'username_taken';
-		};
+	| { ok: false; error: RegisterError };
+
+/** 招待コードが登録に使えるか。使えなければ理由を返す。 */
+function findInviteError(db: Db, code: string, now: number): { invite: InviteRow } | { error: RegisterError } {
+	const invite = db.select().from(invites).where(eq(invites.code, code)).get();
+	if (!invite) return { error: 'invite_invalid' };
+	if (invite.revokedAt !== null) return { error: 'invite_revoked' };
+	if (invite.usedBy) return { error: 'invite_used' };
+	if (invite.expiresAt !== null && now >= invite.expiresAt) return { error: 'invite_expired' };
+	return { invite };
+}
+
+/**
+ * 登録できそうかを事前に確かめる(パスキー登録でブラウザの操作に入る前の検証)。
+ * 確定の検証は registerUser のトランザクション内で改めて行う。
+ */
+export function precheckRegistration(
+	db: Db,
+	params: { username: string; requireInvite: boolean; inviteCode?: string }
+): RegisterError | null {
+	if (params.requireInvite) {
+		const found = findInviteError(db, params.inviteCode ?? '', Date.now());
+		if ('error' in found) return found.error;
+	}
+	const taken = db.select({ id: users.id }).from(users).where(eq(users.username, params.username.trim())).get();
+	return taken ? 'username_taken' : null;
+}
 
 /**
  * ユーザーを作成する。
@@ -448,31 +482,31 @@ export type RegisterResult =
 export function registerUser(
 	db: Db,
 	params: {
+		/** 省略時は新規採番。パスキー登録ではオプション生成時に決めた id を渡す。 */
+		id?: string;
 		username: string;
-		passwordHash: string;
+		/** null ならパスワードなし(passkey 必須)。 */
+		passwordHash: string | null;
+		/** パスキーで登録する場合の認証情報。ユーザー作成と同じトランザクションで保存する。 */
+		passkey?: Omit<PasskeyRow, 'userId' | 'lastUsedAt'>;
 		requireInvite: boolean;
 		inviteCode?: string;
 		/** ブートストラップ時に作る世帯名(既定「自宅」)。 */
 		householdName?: string;
 	}
 ): RegisterResult {
+	if (!params.passwordHash && !params.passkey) {
+		throw new Error('パスワードかパスキーのどちらかが必要です。');
+	}
 	const now = Date.now();
 	return db.transaction((tx): RegisterResult => {
 			let targetHouseholdId: string;
 			let invite: InviteRow | undefined;
 
 			if (params.requireInvite) {
-				invite = tx
-					.select()
-					.from(invites)
-					.where(eq(invites.code, params.inviteCode ?? ''))
-					.get();
-				if (!invite) return { ok: false, error: 'invite_invalid' };
-				if (invite.revokedAt !== null) return { ok: false, error: 'invite_revoked' };
-				if (invite.usedBy) return { ok: false, error: 'invite_used' };
-				if (invite.expiresAt !== null && now >= invite.expiresAt) {
-					return { ok: false, error: 'invite_expired' };
-				}
+				const found = findInviteError(tx, params.inviteCode ?? '', now);
+				if ('error' in found) return { ok: false, error: found.error };
+				invite = found.invite;
 				targetHouseholdId = invite.householdId;
 			} else {
 				// 呼び出し側の事前確認は競合しうるため、トランザクション内でも再確認する。
@@ -481,7 +515,7 @@ export function registerUser(
 			}
 
 			const user: UserRow = {
-				id: newId(),
+				id: params.id ?? newId(),
 				username: params.username.trim(),
 				passwordHash: params.passwordHash,
 				mustChangePassword: false,
@@ -495,6 +529,10 @@ export function registerUser(
 				if ((cause as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE')
 					return { ok: false, error: 'username_taken' };
 				throw cause;
+			}
+
+			if (params.passkey) {
+				tx.insert(passkeys).values({ ...params.passkey, userId: user.id }).run();
 			}
 
 			if (params.requireInvite && invite) {

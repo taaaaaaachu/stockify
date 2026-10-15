@@ -2,13 +2,13 @@
  * Service Worker が fetch をどう扱うかの判定(ADR 0009 Phase 1)。
  * - precache: ビルド成果物・静的ファイル。cache-first。
  * - page: 画面遷移の HTML。network-first、失敗時はキャッシュ。
- * - clear-pages: ログイン・登録の POST。ユーザー情報入りのページキャッシュを消してから素通し。
+ * - clear-pages: ログイン・登録の POST(フォームアクションとパスキーの API)。ユーザー情報入りのページキャッシュを消してから素通し。
  * - clear-user-data: ログアウト(POST)・アカウント削除(DELETE)。ページキャッシュと会員のローカル DB を消してから素通し。
  * - network: それ以外(API など)。SW は関与しない。
  */
 export type Strategy = 'precache' | 'page' | 'clear-pages' | 'clear-user-data' | 'network';
 
-const SIGN_IN_PATHS = new Set(['/login', '/register']);
+const SIGN_IN_PATHS = new Set(['/login', '/register', '/api/passkey/login', '/api/passkey/register/verify']);
 const SIGN_OUT_PATHS = new Set(['/logout', '/api/account/delete']);
 
 export function strategyFor(
