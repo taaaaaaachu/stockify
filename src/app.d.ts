@@ -12,6 +12,8 @@ declare global {
 				notifyMinuteOfDay: number;
 				mustChangePassword: boolean;
 			} | null;
+			/** 現在のセッション(id は Cookie トークンのハッシュ)。未ログインなら null。 */
+			session: { id: string; verifiedAt: number | null } | null;
 			/** ログイン中ユーザーが所属する世帯の一覧。 */
 			households: {
 				id: string;

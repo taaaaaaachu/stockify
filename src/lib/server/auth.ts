@@ -2,12 +2,19 @@ import { hash, verify } from '@node-rs/argon2';
 import { randomBytes, createHash } from 'node:crypto';
 import { and, eq, ne, count } from 'drizzle-orm';
 import { db } from './db';
-import { users, sessions, memberships, ownershipTransfers, type UserRow } from './db/schema';
+import { users, sessions, memberships, ownershipTransfers, passkeys, type UserRow } from './db/schema';
 import type { Db } from './db';
 
 export const SESSION_COOKIE = 'session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30日
 const SESSION_RENEW_THRESHOLD_MS = 1000 * 60 * 60 * 24 * 15; // 残り15日を切ったら延長
+/** 認証情報の変更などを許す、直近の本人確認(ログイン・再認証)からの猶予。 */
+export const RECENT_AUTH_MS = 1000 * 60 * 5;
+
+/** verifiedAt が直近の本人確認とみなせるか。 */
+export function isRecentlyVerified(verifiedAt: number | null, now = Date.now()): boolean {
+	return verifiedAt !== null && now - verifiedAt < RECENT_AUTH_MS;
+}
 
 // argon2 パラメータ(OWASP 推奨相当)。
 const ARGON2_OPTS = { memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
@@ -61,7 +68,10 @@ export function changePassword(
 	});
 }
 
-/** 管理者リセット用。全セッションを無効化し、次回ログインで変更を要求する。 */
+/**
+ * 管理者リセット用(認証情報の全初期化)。全パスキーと全セッションを削除し、
+ * 次回ログインで変更を要求する(ADR 0004, 0010)。
+ */
 export function resetPassword(userId: string, passwordHash: string, database: Db = db): boolean {
 	return database.transaction((tx) => {
 		const result = tx
@@ -70,6 +80,7 @@ export function resetPassword(userId: string, passwordHash: string, database: Db
 			.where(eq(users.id, userId))
 			.run();
 		if (result.changes === 0) return false;
+		tx.delete(passkeys).where(eq(passkeys.userId, userId)).run();
 		tx.delete(sessions).where(eq(sessions.userId, userId)).run();
 		return true;
 	});
@@ -138,6 +149,7 @@ export async function verifyCredentials(
 
 export interface SessionValidation {
 	user: Pick<UserRow, 'id' | 'username' | 'instanceRole' | 'notifyMinuteOfDay' | 'mustChangePassword'>;
+	session: { id: string; verifiedAt: number | null };
 	/** Cookie の有効期限を更新すべき場合の新しい期限(延長時のみ)。 */
 	renewedExpiresAt: number | null;
 }
@@ -146,7 +158,8 @@ export interface SessionValidation {
 export function createSession(userId: string): { token: string; expiresAt: number } {
 	const token = randomBytes(32).toString('hex');
 	const expiresAt = Date.now() + SESSION_TTL_MS;
-	db.insert(sessions).values({ id: hashToken(token), userId, expiresAt }).run();
+	// ログイン直後は本人確認済みとして扱う(すぐパスキーを追加できるように)。
+	db.insert(sessions).values({ id: hashToken(token), userId, expiresAt, verifiedAt: Date.now() }).run();
 	return { token, expiresAt };
 }
 
@@ -183,7 +196,12 @@ export function validateSessionToken(token: string): SessionValidation | null {
 		db.update(sessions).set({ expiresAt: renewedExpiresAt }).where(eq(sessions.id, id)).run();
 	}
 
-	return { user, renewedExpiresAt };
+	return { user, session: { id, verifiedAt: row.verifiedAt }, renewedExpiresAt };
+}
+
+/** セッションを本人確認済みにする(再認証の成功時)。 */
+export function markSessionVerified(sessionId: string, database: Db = db): void {
+	database.update(sessions).set({ verifiedAt: Date.now() }).where(eq(sessions.id, sessionId)).run();
 }
 
 /** セッションを無効化する(ログアウト)。 */

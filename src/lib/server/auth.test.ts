@@ -2,8 +2,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { createDb, type Db } from './db';
-import { changePassword, deleteUserAccount, hashSessionToken, listUsers, resetPassword, verifyUserPassword } from './auth';
-import { sessions, users, memberships, invites } from './db/schema';
+import {
+	changePassword,
+	deleteUserAccount,
+	hashSessionToken,
+	isRecentlyVerified,
+	listUsers,
+	RECENT_AUTH_MS,
+	resetPassword,
+	verifyUserPassword
+} from './auth';
+import { sessions, users, memberships, invites, passkeys } from './db/schema';
 import { createHousehold } from './households';
 
 let db: Db;
@@ -48,6 +57,19 @@ describe('パスワードセッション管理', () => {
 		expect(db.select().from(users).where(eq(users.id, user.id)).get()?.mustChangePassword).toBe(true);
 	});
 
+	it('管理者リセットでは対象の全パスキーも消え、他人のパスキーは残る(認証情報の全初期化)', () => {
+		db.insert(users).values({ ...user, id: 'other', username: 'other' }).run();
+		const pk = { publicKey: Buffer.from([1]), counter: 0, transports: null, name: 'p', createdAt: 0 };
+		db.insert(passkeys).values([
+			{ ...pk, id: 'pk-1', userId: user.id },
+			{ ...pk, id: 'pk-2', userId: user.id },
+			{ ...pk, id: 'pk-other', userId: 'other' }
+		]).run();
+
+		expect(resetPassword(user.id, 'temporary-hash', db)).toBe(true);
+		expect(db.select().from(passkeys).all().map((p) => p.id)).toEqual(['pk-other']);
+	});
+
 	it('管理者一覧は認証情報を返さない', () => {
 		expect(listUsers(db)).toEqual([{ id: user.id, username: user.username }]);
 	});
@@ -83,5 +105,14 @@ describe('verifyUserPassword', () => {
 	it('パスワードのない会員(パスキーのみ)は常に失敗する', async () => {
 		db.update(users).set({ passwordHash: null }).where(eq(users.id, user.id)).run();
 		expect(await verifyUserPassword(user.id, 'anything', db)).toBe(false);
+	});
+});
+
+describe('isRecentlyVerified', () => {
+	it('猶予内なら true、猶予切れ・未確認なら false', () => {
+		const now = 1_000_000_000;
+		expect(isRecentlyVerified(now - RECENT_AUTH_MS + 1, now)).toBe(true);
+		expect(isRecentlyVerified(now - RECENT_AUTH_MS, now)).toBe(false);
+		expect(isRecentlyVerified(null, now)).toBe(false);
 	});
 });

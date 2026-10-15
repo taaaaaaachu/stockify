@@ -11,6 +11,7 @@ function cookieOpts(expires: Date) {
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = null;
+	event.locals.session = null;
 	event.locals.households = [];
 	event.locals.activeHousehold = null;
 
@@ -19,6 +20,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		const result = validateSessionToken(token);
 		if (result) {
 			event.locals.user = result.user;
+			event.locals.session = result.session;
 			if (result.user.mustChangePassword) {
 				const pathname = event.url.pathname;
 				const allowed =
