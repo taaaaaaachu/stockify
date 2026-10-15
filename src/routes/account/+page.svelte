@@ -6,8 +6,12 @@
 	import { formatDate } from '$lib/format';
 	import { buildInviteRequestBody } from '$lib/app/inviteRequest';
 	import PasswordChangeForm from '$lib/components/PasswordChangeForm.svelte';
+	import CredentialsSection from '$lib/components/CredentialsSection.svelte';
+	import { api, isPasskeyCancel, withPasskeyReauth } from '$lib/app/passkey';
 
 	let { data } = $props();
+	/** パスワードのない会員(パスキーのみ)は、削除の確認をパスワードの代わりにパスキーの本人確認で行う。 */
+	const hasPassword = $derived(data.credentials.hasPassword);
 
 	let inviteCode = $state('');
 	let joinError = $state('');
@@ -94,28 +98,29 @@
 	async function deleteAdminUser(user: AdminUser) {
 		const username = window.prompt(`削除するユーザー名「${user.username}」を入力してください。`);
 		if (username === null) return;
-		const password = window.prompt('操作するsuper_adminの現在のパスワードを入力してください。');
+		const password = hasPassword ? window.prompt('操作するsuper_adminの現在のパスワードを入力してください。') : '';
 		if (password === null) return;
-		const res = await fetch(`/api/admin/users/${user.id}`, {
-			method: 'DELETE',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ username, password })
-		});
-		const result = await res.json().catch(() => ({}));
-		if (!res.ok) { adminError = result.message ?? 'ユーザーの削除に失敗しました。'; return; }
+		adminError = '';
+		try {
+			const body = JSON.stringify({ username, password });
+			await withPasskeyReauth(() => api(`/api/admin/users/${user.id}`, { method: 'DELETE', body }));
+		} catch (err) {
+			if (!isPasskeyCancel(err)) adminError = err instanceof Error ? err.message : 'ユーザーの削除に失敗しました。';
+			return;
+		}
 		adminUsers = adminUsers.filter((candidate) => candidate.id !== user.id);
 	}
 
 	async function deleteAccount(e: SubmitEvent) {
 		e.preventDefault();
 		deleteError = '';
-		const res = await fetch('/api/account/delete', {
-			method: 'DELETE',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ username: deleteUsername, password: deletePassword })
-		});
-		const result = await res.json().catch(() => ({}));
-		if (!res.ok) { deleteError = result.message ?? 'アカウントの削除に失敗しました。'; return; }
+		try {
+			const body = JSON.stringify({ username: deleteUsername, password: hasPassword ? deletePassword : '' });
+			await withPasskeyReauth(() => api('/api/account/delete', { method: 'DELETE', body }));
+		} catch (err) {
+			if (!isPasskeyCancel(err)) deleteError = err instanceof Error ? err.message : 'アカウントの削除に失敗しました。';
+			return;
+		}
 		window.location.href = '/login?deleted=1';
 	}
 
@@ -273,7 +278,9 @@
 	{/if}
 </div>
 
-<PasswordChangeForm />
+<CredentialsSection credentials={data.credentials} />
+
+<PasswordChangeForm {hasPassword} />
 
 <div style={section}>
 	<h2 style="margin:0 0 0.5rem; font-size:1rem;">所属している世帯</h2>
@@ -454,7 +461,11 @@
 			<p style="font-size:0.85rem; color:var(--muted);">この操作は取り消せません。ownerになっている世帯がある場合は、先にownerを委任してください。</p>
 			<form onsubmit={deleteAccount} style="display:flex; flex-direction:column; gap:0.5rem;">
 				<input bind:value={deleteUsername} placeholder="ユーザー名" autocomplete="username" required />
-				<input bind:value={deletePassword} type="password" placeholder="現在のパスワード" autocomplete="current-password" required />
+				{#if hasPassword}
+					<input bind:value={deletePassword} type="password" placeholder="現在のパスワード" autocomplete="current-password" required />
+				{:else}
+					<small style="color:var(--muted);">削除の前に、必要に応じてパスキーで本人確認します。</small>
+				{/if}
 				<div style="display:flex; justify-content:flex-end; gap:0.5rem;">
 					<button type="button" onclick={() => { showDeleteAccount = false; deleteError = ''; }}>キャンセル</button>
 					<button type="submit" disabled={busy} style="border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.4rem 0.8rem; cursor:pointer;">削除する</button>

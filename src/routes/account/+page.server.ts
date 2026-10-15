@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { listHouseholdInvites, listHouseholdMembers, listPendingOwnershipTransfers, listHouseholdSummaries } from '$lib/server/households';
+import { getCredentialSummary } from '$lib/server/credentials';
 import { canManageInvites, canManageMembers } from '$lib/rbac';
 import type { PageServerLoad } from './$types';
 
@@ -10,6 +11,7 @@ export const load: PageServerLoad = ({ locals }) => {
 	const canManageInvitesForActive = active ? canManageInvites(active.role) : false;
 	const canManageMembersForActive = active ? canManageMembers(active.role) : false;
 	return {
+		credentials: getCredentialSummary(db, locals.user.id),
 		canManageInvites: canManageInvitesForActive,
 		canManageMembers: canManageMembersForActive,
 		invites: canManageInvitesForActive && active ? listHouseholdInvites(db, active.id) : [],
