@@ -17,13 +17,13 @@
  (HTTPS/Tunnel)  │                         │                                   │
                  │                         └── data/app.sqlite (バインドマウント) │
                  │                                                            │
-                 │   notify-cron ──毎日 09:00 JST── POST /api/cron/notify ────►  │
+                 │   notify-cron ──15 分ごと──── POST /api/cron/notify ────►  │
                  └────────────────────────────────────────────────────────────┘
 ```
 
 - **app**: 会員データは SQLite に保存。起動時に自動マイグレーション。
 - **cloudflared**: ポート開放なしで HTTPS 公開(PWA/プッシュに必須)。
-- **notify-cron**: 毎日 1 回、購入推奨に達した品目を会員へプッシュ通知。
+- **notify-cron**: 15 分ごとに通知エンドポイントを叩く。各会員が設定した通知時刻のスロットに該当したときだけ、購入推奨に達した品目をプッシュ通知する。
 - **SQLite はプロジェクト直下 `data/app.sqlite`**(バインドマウント)。**File Station でそのまま
   バックアップ/リストアできます。**
 
@@ -153,8 +153,8 @@ Compress-Archive -Path $items -DestinationPath ..\stockify-deploy.zip -Force
 > プッシュは HTTPS 必須(Cloudflare Tunnel が満たす)。iOS はホーム画面に追加した
 > PWA からのみ通知を許可できます。
 
-通知時刻を変えたい場合は、Windows 側で `docker-compose.yml` の `notify-cron` の cron 式
-(`0 0 * * *` = 00:00 UTC = 09:00 JST)を編集し、**第 9 章の更新手順**で反映します。
+通知時刻は各会員がアプリの**設定**画面で 15 分単位で指定します(既定は 09:00)。`notify-cron` は
+15 分ごとに動き、各会員の通知時刻に該当したときだけ送るので、cron 式を変える必要はありません。
 
 ---
 
