@@ -4,14 +4,32 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const dbPath = process.env.DATABASE_PATH ?? './data/app.sqlite';
-mkdirSync(dirname(dbPath), { recursive: true });
+/**
+ * 開いた SQLite にマイグレーションを適用する。外部キー違反が残れば例外。
+ * @param {import('better-sqlite3').Database} sqlite
+ */
+export function applyMigrations(sqlite, migrationsFolder = './drizzle') {
+	// テーブルを作り直すマイグレーションはトランザクション内で走るため、SQL 中の
+	// `PRAGMA foreign_keys=OFF` が効かない。ここで切っておかないと DROP TABLE の巻き添えで
+	// ON DELETE CASCADE / SET NULL が走り、関連テーブルのデータが消える。
+	sqlite.pragma('foreign_keys = OFF');
+	migrate(drizzle(sqlite), { migrationsFolder });
+	const violations = /** @type {unknown[]} */ (sqlite.pragma('foreign_key_check'));
+	sqlite.pragma('foreign_keys = ON');
+	if (violations.length > 0) {
+		throw new Error(`外部キー違反があります: ${JSON.stringify(violations)}`);
+	}
+}
 
-const sqlite = new Database(dbPath);
-sqlite.pragma('journal_mode = WAL');
-const db = drizzle(sqlite);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+	const dbPath = process.env.DATABASE_PATH ?? './data/app.sqlite';
+	mkdirSync(dirname(dbPath), { recursive: true });
 
-migrate(db, { migrationsFolder: './drizzle' });
-console.log(`マイグレーション適用完了: ${dbPath}`);
-sqlite.close();
+	const sqlite = new Database(dbPath);
+	sqlite.pragma('journal_mode = WAL');
+	applyMigrations(sqlite);
+	console.log(`マイグレーション適用完了: ${dbPath}`);
+	sqlite.close();
+}

@@ -107,7 +107,12 @@ export function deleteUserAccount(userId: string, database: Db = db): DeleteUser
 /** 指定ユーザーの現在のパスワードを検証する。 */
 export async function verifyUserPassword(userId: string, password: string, database: Db = db): Promise<boolean> {
 	const user = database.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, userId)).get();
-	return user ? verify(user.passwordHash, password).catch(() => false) : false;
+	if (!user?.passwordHash) {
+		// パスワードなし(パスキーのみ)でも同じだけ時間をかけ、有無を漏らさない。
+		await hash(password, ARGON2_OPTS).catch(() => undefined);
+		return false;
+	}
+	return verify(user.passwordHash, password).catch(() => false);
 }
 
 /** 管理者リセット時に表示する一時パスワードを生成する。 */
@@ -121,8 +126,9 @@ export async function verifyCredentials(
 	password: string
 ): Promise<UserRow | null> {
 	const user = db.select().from(users).where(eq(users.username, username.trim())).get();
-	if (!user) {
-		// ユーザー不在でも一定のハッシュ計算を行い、存在有無をタイミングで漏らさない。
+	if (!user?.passwordHash) {
+		// ユーザー不在・パスワードなし(パスキーのみ)でも一定のハッシュ計算を行い、
+		// 存在有無やパスワードの有無をタイミングで漏らさない。
 		await hash(password, ARGON2_OPTS).catch(() => undefined);
 		return null;
 	}

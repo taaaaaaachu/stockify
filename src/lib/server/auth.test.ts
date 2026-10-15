@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { createDb, type Db } from './db';
-import { changePassword, deleteUserAccount, hashSessionToken, listUsers, resetPassword } from './auth';
+import { changePassword, deleteUserAccount, hashSessionToken, listUsers, resetPassword, verifyUserPassword } from './auth';
 import { sessions, users, memberships, invites } from './db/schema';
 import { createHousehold } from './households';
 
@@ -76,5 +76,12 @@ describe('パスワードセッション管理', () => {
 	it('最後のsuper_adminは削除できない', () => {
 		db.update(users).set({ instanceRole: 'super_admin' }).where(eq(users.id, user.id)).run();
 		expect(deleteUserAccount(user.id, db)).toEqual({ ok: false, error: 'last_super_admin' });
+	});
+});
+
+describe('verifyUserPassword', () => {
+	it('パスワードのない会員(パスキーのみ)は常に失敗する', async () => {
+		db.update(users).set({ passwordHash: null }).where(eq(users.id, user.id)).run();
+		expect(await verifyUserPassword(user.id, 'anything', db)).toBe(false);
 	});
 });
