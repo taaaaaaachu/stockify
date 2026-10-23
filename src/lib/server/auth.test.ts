@@ -71,7 +71,7 @@ describe('パスワードセッション管理', () => {
 	});
 
 	it('管理者一覧は認証情報を返さない', () => {
-		expect(listUsers(db)).toEqual([{ id: user.id, username: user.username }]);
+		expect(listUsers(db)).toEqual([{ id: user.id, username: user.username, resetLinkExpiresAt: null }]);
 	});
 
 	it('ownerの世帯が残っているユーザーは削除できない', () => {

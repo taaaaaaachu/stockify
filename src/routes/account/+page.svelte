@@ -19,12 +19,14 @@
 	let lastCode = $state<string | null>(null);
 	let copiedCode = $state<string | null>(null);
 	let busy = $state(false);
-	type AdminUser = { id: string; username: string };
+	type AdminUser = { id: string; username: string; resetLinkExpiresAt: number | null };
 	type HouseholdSummary = { id: string; name: string; memberCount: number; ownerCount: number; itemCount: number; createdAt: number; activeInviteCount: number };
 	type HouseholdMember = { userId: string; username: string; role: 'owner' | 'manager' | 'member' };
 	let adminUsers = $state<AdminUser[]>([]);
 	let householdMembers = $derived(data.members ?? []);
 	let resetResult = $state<{ username: string; password: string } | null>(null);
+	/** 発行直後のリセットリンク。URL はこのときしか見られない(ADR 0011)。 */
+	let issuedLink = $state<{ username: string; url: string } | null>(null);
 	let adminError = $state('');
 	let deleteUsername = $state('');
 	let deletePassword = $state('');
@@ -36,7 +38,7 @@
 	let adminHouseholdError = $state('');
 	let adminInviteCodes = $state<Record<string, string>>({});
 
-	async function copyInviteCode(code: string) {
+	async function copyToClipboard(code: string) {
 		try {
 			await navigator.clipboard.writeText(code);
 			copiedCode = code;
@@ -61,8 +63,7 @@
 			guestItemCount = 0;
 		}
 		if (data.user?.instanceRole === 'super_admin') {
-			const res = await fetch('/api/admin/users');
-			if (res.ok) adminUsers = await res.json();
+			await loadAdminUsers();
 			adminHouseholds = data.adminHouseholds ?? [];
 		}
 	});
@@ -78,6 +79,42 @@
 		await invalidateAll();
 	}
 
+	async function loadAdminUsers() {
+		const res = await fetch('/api/admin/users');
+		if (res.ok) adminUsers = await res.json();
+	}
+
+	const formatExpiry = (ms: number) =>
+		new Date(ms).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+	async function issueResetLink(user: AdminUser) {
+		const message = user.resetLinkExpiresAt
+			? `${user.username} のリセットリンクを再発行しますか?未使用の古いリンクは使えなくなります。`
+			: `${user.username} のリセットリンクを発行しますか?本人がリンクを使うと、パスワードとパスキーがすべて置き換わります。`;
+		if (!confirm(message)) return;
+		adminError = '';
+		resetResult = null;
+		try {
+			const result = await api<{ url: string }>(`/api/admin/users/${user.id}/reset-link`, { method: 'POST' });
+			issuedLink = { username: user.username, url: result.url };
+		} catch (err) {
+			adminError = err instanceof Error ? err.message : 'リセットリンクの発行に失敗しました。';
+		}
+		await loadAdminUsers();
+	}
+
+	async function revokeResetLink(user: AdminUser) {
+		if (!confirm(`${user.username} のリセットリンクを取り消しますか?`)) return;
+		adminError = '';
+		try {
+			await api(`/api/admin/users/${user.id}/reset-link`, { method: 'DELETE' });
+			if (issuedLink?.username === user.username) issuedLink = null;
+		} catch (err) {
+			adminError = err instanceof Error ? err.message : 'リセットリンクの取り消しに失敗しました。';
+		}
+		await loadAdminUsers();
+	}
+
 	async function resetUser(user: AdminUser) {
 		adminError = '';
 		resetResult = null;
@@ -90,6 +127,9 @@
 				return;
 			}
 			resetResult = { username: user.username, password: result.temporaryPassword };
+			// 未使用のリセットリンクは使えなくなっている。
+			if (issuedLink?.username === user.username) issuedLink = null;
+			await loadAdminUsers();
 		} finally {
 			busy = false;
 		}
@@ -189,7 +229,7 @@
 			});
 			const json = await res.json();
 			lastCode = json.code ?? null;
-			if (lastCode) await copyInviteCode(lastCode);
+			if (lastCode) await copyToClipboard(lastCode);
 			await invalidateAll();
 		} finally {
 			busy = false;
@@ -233,7 +273,7 @@
 		const result = await res.json().catch(() => ({}));
 		if (!res.ok) { adminHouseholdError = result.message ?? '招待コードの発行に失敗しました。'; return; }
 		adminInviteCodes = { ...adminInviteCodes, [household.id]: result.code };
-		if (result.code) await copyInviteCode(result.code);
+		if (result.code) await copyToClipboard(result.code);
 	}
 
 	async function importGuest() {
@@ -342,7 +382,7 @@
 		{#if lastCode}
 			<p style="font-size:0.9rem; display:flex; gap:0.5rem; align-items:center;">
 				<span>発行しました: <code style="font-weight:700; user-select:all;">{lastCode}</code></span>
-				<button type="button" onclick={() => copyInviteCode(lastCode!)} style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === lastCode ? 'コピーしました' : 'コピー'}</button>
+				<button type="button" onclick={() => copyToClipboard(lastCode!)} style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === lastCode ? 'コピーしました' : 'コピー'}</button>
 			</p>
 		{/if}
 		{#if data.invites.length > 0}
@@ -419,7 +459,7 @@
 				<button onclick={() => createAdminInvite(household)} style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.3rem 0.6rem; cursor:pointer;">招待コード発行</button>
 				{#if adminInviteCodes[household.id]}
 					<code style="user-select:all;">{adminInviteCodes[household.id]}</code>
-					<button type="button" onclick={() => copyInviteCode(adminInviteCodes[household.id])} style="border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === adminInviteCodes[household.id] ? 'コピーしました' : 'コピー'}</button>
+					<button type="button" onclick={() => copyToClipboard(adminInviteCodes[household.id])} style="border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === adminInviteCodes[household.id] ? 'コピーしました' : 'コピー'}</button>
 				{/if}
 				<button onclick={() => deleteAdminHousehold(household)} style="margin-left:auto; border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">削除</button>
 			</div>
@@ -428,15 +468,20 @@
 	</div>
 	<div style={section}>
 		<h2 style="margin:0 0 0.5rem; font-size:1rem;">ユーザーパスワードのリセット</h2>
-		<p style="font-size:0.85rem; color:var(--muted);">リセットすると対象ユーザーの登録済みパスキーはすべて削除され、全セッションが無効になり、次回ログイン時に変更が必要になります。</p>
+		<p style="font-size:0.85rem; color:var(--muted);">一時パスワードを発行すると、対象ユーザーの登録済みパスキーはすべて削除され、全セッションが無効になり、次回ログイン時に変更が必要になります。リセットリンク(24時間有効・1回限り)は、本人が使った時点で同じ初期化を行い、本人が新しいパスワードかパスキーを設定します。発行しただけでは本人のログインは変わりません。</p>
 		{#if adminUsers.length === 0}
 			<p style="color:var(--muted);">自分以外のユーザーはいません。</p>
 		{:else}
 			<ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.4rem;">
 				{#each adminUsers as user (user.id)}
-					<li style="display:flex; gap:0.5rem; align-items:center;">
+					<li style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
 						<span>{user.username}</span>
+						{#if user.resetLinkExpiresAt}
+							<small style="color:var(--muted);">リンク発行中(〜{formatExpiry(user.resetLinkExpiresAt)})</small>
+							<button onclick={() => revokeResetLink(user)} disabled={busy} style="border:none; background:none; color:var(--muted); text-decoration:underline; cursor:pointer; padding:0;">取り消し</button>
+						{/if}
 						<button onclick={() => resetUser(user)} disabled={busy} style="margin-left:auto; border:1px solid var(--warn); background:var(--card); color:var(--warn); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">一時パスワードを発行</button>
+						<button onclick={() => issueResetLink(user)} disabled={busy} style="border:1px solid var(--warn); background:var(--card); color:var(--warn); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">{user.resetLinkExpiresAt ? 'リンクを再発行' : 'リセットリンクを発行'}</button>
 						<button onclick={() => deleteAdminUser(user)} disabled={busy} style="border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">削除</button>
 					</li>
 				{/each}
@@ -446,6 +491,13 @@
 		{#if resetResult}
 			<p style="color:var(--warn);">ユーザー <b>{resetResult.username}</b> のパスキーを削除し、一時パスワードを発行しました（この画面でのみ表示）:</p>
 			<code style="display:block; user-select:all; padding:0.5rem; background:var(--bg);">{resetResult.password}</code>
+		{/if}
+		{#if issuedLink}
+			<p style="color:var(--warn);">ユーザー <b>{issuedLink.username}</b> のリセットリンクです(24時間有効・1回限り。この画面でのみ表示)。本人に渡してください:</p>
+			<div style="display:flex; gap:0.5rem; align-items:center;">
+				<code style="flex:1; min-width:0; overflow-wrap:anywhere; user-select:all; padding:0.5rem; background:var(--bg);">{issuedLink.url}</code>
+				<button type="button" onclick={() => copyToClipboard(issuedLink!.url)} style="border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === issuedLink.url ? 'コピーしました' : 'コピー'}</button>
+			</div>
 		{/if}
 	</div>
 {/if}

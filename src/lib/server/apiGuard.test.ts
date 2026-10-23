@@ -11,6 +11,8 @@ describe('allowedDuringForcedChange', () => {
 			'/account',
 			'/account/__data.json',
 			'/logout',
+			'/reset/abc',
+			'/reset/abc/__data.json',
 			'/_app/immutable/x.js'
 		]) {
 			expect(allowedDuringForcedChange(p), p).toBe(true);

@@ -30,7 +30,10 @@ export function requireRecentAuth(locals: App.Locals): AuthedUser & { sessionId:
 	return { ...user, sessionId: locals.session.id };
 }
 
-/** 強制パスワード変更中でも使える API。パスワード変更・パスキー登録と、その前の本人確認だけ(ADR 0011)。 */
+/**
+ * 強制パスワード変更中でも使える API。パスワード変更・パスキー登録と、その前の本人確認だけ(ADR 0011)。
+ * パスキー登録の API はリセットリンクでの再設定にも使う。
+ */
 const FORCED_CHANGE_APIS = new Set([
 	'/api/account/password',
 	'/api/account/reauth',
@@ -45,6 +48,8 @@ export function allowedDuringForcedChange(pathname: string): boolean {
 		pathname === '/account' ||
 		pathname === '/account/__data.json' ||
 		pathname === '/logout' ||
+		// リセットリンクは同じブラウザで別の人が開くことがある。
+		pathname.startsWith('/reset/') ||
 		pathname.startsWith('/_app/') ||
 		pathname === '/manifest.webmanifest' ||
 		pathname === '/service-worker.js' ||

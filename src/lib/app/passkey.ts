@@ -38,11 +38,17 @@ export async function loginWithPasskey(useBrowserAutofill = false): Promise<void
 	await api('/api/passkey/login', { method: 'POST', body: JSON.stringify({ response }) });
 }
 
-/** パスキーを作って登録する。signup を渡すと会員登録(ユーザー名・招待コード・世帯名)になる。 */
-async function registerPasskey(name: string, signup?: { username: string; invite: string; household: string }) {
+/**
+ * パスキーを作って登録する。start が signup(ユーザー名・招待コード・世帯名)なら会員登録、
+ * resetToken ならリセットリンクでの再設定、省けばログイン中の会員への追加。
+ */
+async function registerPasskey(
+	name: string,
+	start: { username: string; invite: string; household: string } | { resetToken: string } | object = {}
+) {
 	const optionsJSON = await api<RegOptions>('/api/passkey/register/options', {
 		method: 'POST',
-		body: JSON.stringify(signup ?? {})
+		body: JSON.stringify(start)
 	});
 	const response = await startRegistration({ optionsJSON });
 	await api('/api/passkey/register/verify', { method: 'POST', body: JSON.stringify({ response, name }) });
@@ -54,6 +60,11 @@ export function signupWithPasskey(signup: { username: string; invite: string; ho
 
 export function addPasskey(name: string): Promise<void> {
 	return registerPasskey(name);
+}
+
+/** リセットリンクでパスキーを登録し、そのままログインする。 */
+export function resetWithPasskey(resetToken: string, name: string): Promise<void> {
+	return registerPasskey(name, { resetToken });
 }
 
 export function renamePasskey(id: string, name: string): Promise<unknown> {

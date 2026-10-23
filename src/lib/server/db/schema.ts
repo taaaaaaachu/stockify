@@ -54,6 +54,23 @@ export const passkeys = sqliteTable(
 	(t) => [index('passkeys_user_idx').on(t.userId)]
 );
 
+/**
+ * リセットリンク(ADR 0011)。id にはトークンの SHA-256 ハッシュを格納する。
+ * 1 人につき 1 本(user_id UNIQUE)。使う・取り消すと行を消す。
+ */
+export const resetLinks = sqliteTable('reset_links', {
+	id: text('id').primaryKey(),
+	/** 対象の会員。削除されたらリンクも消える。 */
+	userId: text('user_id')
+		.notNull()
+		.unique()
+		.references(() => users.id, { onDelete: 'cascade' }),
+	/** 発行した管理者。削除されてもリンクは有効のまま。 */
+	createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+	createdAt: integer('created_at').notNull(),
+	expiresAt: integer('expires_at').notNull()
+});
+
 /** パスワード検証の一時的な試行制限。値そのものは保存せず、目的別ハッシュを id に使う。 */
 export const authAttempts = sqliteTable(
 	'auth_attempts',

@@ -24,7 +24,7 @@ const CHALLENGE_TTL_MS = 1000 * 60 * 5;
 
 /**
  * 登録の待ち状態。signup = 未登録者の会員登録(世帯処理は確定時に registerUser で行う)、
- * add = ログイン中の会員のパスキー追加。
+ * add = ログイン中の会員のパスキー追加、reset = リセットリンクでの再設定(ADR 0011)。
  */
 export type RegistrationPending =
 	| {
@@ -35,7 +35,8 @@ export type RegistrationPending =
 			inviteCode: string;
 			householdName: string;
 	  }
-	| { kind: 'add'; userId: string };
+	| { kind: 'add'; userId: string }
+	| { kind: 'reset'; token: string };
 
 type Purpose = 'reg' | 'auth';
 interface Stored {

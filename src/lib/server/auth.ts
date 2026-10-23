@@ -1,8 +1,8 @@
 import { hash, verify } from '@node-rs/argon2';
 import { randomBytes, createHash } from 'node:crypto';
-import { and, eq, ne, count } from 'drizzle-orm';
+import { and, eq, ne, gt, count } from 'drizzle-orm';
 import { db } from './db';
-import { users, sessions, memberships, ownershipTransfers, passkeys, type UserRow } from './db/schema';
+import { users, sessions, memberships, ownershipTransfers, passkeys, resetLinks, type UserRow } from './db/schema';
 import type { Db } from './db';
 
 export const SESSION_COOKIE = 'session';
@@ -46,11 +46,18 @@ export function hashPassword(password: string): Promise<string> {
 export interface AdminUser {
 	id: string;
 	username: string;
+	/** 未使用で期限内のリセットリンクの期限。無ければ null。 */
+	resetLinkExpiresAt: number | null;
 }
 
 /** 管理者画面で表示するユーザー一覧。認証情報は返さない。 */
-export function listUsers(database: Db = db): AdminUser[] {
-	return database.select({ id: users.id, username: users.username }).from(users).orderBy(users.username).all();
+export function listUsers(database: Db = db, now = Date.now()): AdminUser[] {
+	return database
+		.select({ id: users.id, username: users.username, resetLinkExpiresAt: resetLinks.expiresAt })
+		.from(users)
+		.leftJoin(resetLinks, and(eq(resetLinks.userId, users.id), gt(resetLinks.expiresAt, now)))
+		.orderBy(users.username)
+		.all();
 }
 
 /** ユーザー本人のパスワードを更新し、現在のセッション以外を無効化する。 */
@@ -82,6 +89,8 @@ export function resetPassword(userId: string, passwordHash: string, database: Db
 		if (result.changes === 0) return false;
 		tx.delete(passkeys).where(eq(passkeys.userId, userId)).run();
 		tx.delete(sessions).where(eq(sessions.userId, userId)).run();
+		// 未使用のリセットリンクも使えなくする(ADR 0011)。
+		tx.delete(resetLinks).where(eq(resetLinks.userId, userId)).run();
 		return true;
 	});
 }

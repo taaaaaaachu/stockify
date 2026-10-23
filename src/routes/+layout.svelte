@@ -141,7 +141,8 @@
 			<button type="button" onclick={() => store.dismissRejected()}>閉じる</button>
 		</div>
 	{/if}
-	{#if data.user?.mustChangePassword}
+	<!-- リセットリンクは同じブラウザで別の人が開くことがあるので、強制変更中でも見せる(ADR 0011)。 -->
+	{#if data.user?.mustChangePassword && !page.url.pathname.startsWith('/reset/')}
 		<PasswordChangeForm forced={true} />
 	{:else}
 		{@render children()}
