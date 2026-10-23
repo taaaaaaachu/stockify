@@ -15,7 +15,7 @@ push/PR ──▶ GitHub Actions (lint / check / test)
 
 - NAS は宅内にあり外部から到達できないので、GitHub からは **push しない**。NAS が **pull で取りに行く**。
 - ポート開放・VPN は不要(必要な外向き通信は GHCR への HTTPS のみ)。
-- ビルドはランタイム env 非依存(`ORIGIN` 等は実行時に compose の `environment:` で注入)。
+- ビルドはランタイム env 非依存(`VAPID_*` 等は実行時に compose の `environment:` で注入)。公開オリジンは設定せず、cloudflared が転送する Host ヘッダーから決まる。
 - **Watchtower は stockify の compose には含めない**。`/var/run/docker.sock` 経由で Docker ホスト
   全体を監視できるため、NAS 全体で **1 台だけ独立プロジェクト**として動かし、enable ラベルの付いた
   全プロジェクトの app(stockify / lowest_finder 等)をまとめて自動更新する。stockify を作り直しても
@@ -77,7 +77,7 @@ GHCR パッケージは既定で private。Watchtower が pull できるよう�
 
 **認証を省きたい場合**: GitHub の Packages ページで当該パッケージを **public** に変更すれば、
 PAT の発行・上記ログイン・compose の `config.json` マウント行はすべて不要になる
-(イメージには秘密が焼き込まれていない = `ORIGIN`/`VAPID_*`/`CRON_SECRET` は実行時注入のため)。
+(イメージには秘密も公開ドメインも焼き込まれていない = `VAPID_*`/`CRON_SECRET` は実行時注入のため)。
 
 ### 3. NAS で共用ネットワークと Cloudflare Tunnel を起動
 
@@ -102,7 +102,7 @@ PAT の発行・上記ログイン・compose の `config.json` マウント行�
    - `stock.example.com` → `http://stockify-app:3000`
    - `lowest.example.com` → `http://lowest-finder-app:3000`
 
-3. `.env` を各アプリに用意(`.env.example` 参照。`TUNNEL_TOKEN` は不要、`ORIGIN` /
+3. `.env` を各アプリに用意(`.env.example` 参照。`TUNNEL_TOKEN` は不要、
    `VAPID_*` / `CRON_SECRET` を設定)。
 4. 新しい `docker-compose.yml` を各アプリに配置して起動:
 

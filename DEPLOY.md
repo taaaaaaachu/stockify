@@ -75,14 +75,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 メモ帳等で以下の内容の **`.env`** を作ります(拡張子なし・UTF-8)。**このファイルは配布・公開しないこと。**
 
 ```dotenv
-ORIGIN=https://stock.example.com
 VAPID_PUBLIC_KEY=＜3.1 の Public Key＞
 VAPID_PRIVATE_KEY=＜3.1 の Private Key＞
 VAPID_SUBJECT=mailto:you@example.com
 CRON_SECRET=＜3.2 の値＞
 ```
 
-> `ORIGIN` は必ず公開 URL に一致させます。ズレるとログイン等の POST が CSRF で 403 になります。
+> 公開オリジン(`ORIGIN`)は設定しません。cloudflared が転送する Host ヘッダー(公開ホスト名)と https から決まります。Tunnel の設定で HTTP Host Header を書き換えないでください。ズレるとログイン等の POST が CSRF で 403 になります。
 
 ### 3.5 アップロード用に ZIP を作る
 
@@ -184,7 +183,7 @@ SQLite はプロジェクト直下 `data/app.sqlite` にあります。
 
 | 症状 | 原因 / 対処 |
 |---|---|
-| ログイン/登録で 403 | `ORIGIN` が公開 URL と不一致。`.env` を修正し、第 9 章で反映。 |
+| ログイン/登録で 403 | 公開オリジンが実際のアクセス先と不一致。Tunnel の Public Hostname が公開 URL と一致しているか、HTTP Host Header を書き換えていないかを確認する。 |
 | 設定に「サーバーで通知が設定されていません」 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` 未設定。`.env` を確認。 |
 | 通知が来ない | ①ブラウザで通知を許可したか ②PWA としてインストールしたか(特に iOS)③`notify-cron` が起動しているか(Container Manager のログ)④購入推奨日に達した品目があるか(定期便が有効な品目は対象外)。 |
 | cron が 401 | `.env` の `CRON_SECRET` が空でないか。`app` と `notify-cron` は同じ `.env` を共有します。 |
@@ -197,7 +196,6 @@ SQLite はプロジェクト直下 `data/app.sqlite` にあります。
 
 | 変数 | 用途 | 必須 |
 |---|---|---|
-| `ORIGIN` | 公開オリジン(CSRF/リダイレクト) | 本番で必須 |
 | `DATABASE_PATH` | SQLite パス(compose で `/data/app.sqlite` 固定) | — |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push 鍵 | 通知を使うなら必須 |
 | `VAPID_SUBJECT` | VAPID の連絡先(`mailto:` 等) | 任意 |

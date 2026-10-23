@@ -23,8 +23,8 @@
 
 | 領域 | 採用技術 |
 | --- | --- |
-| フロントエンド | Svelte 5 / SvelteKit 2 / TypeScript 6 / Vite 8 |
-| サーバー | SvelteKit(`@sveltejs/adapter-node`)によるフルスタック構成、Node.js 22(Docker イメージ) |
+| フロントエンド | Svelte 5 / SvelteKit 3 / TypeScript 6 / Vite 8 |
+| サーバー | SvelteKit(`@sveltejs/adapter-node`)によるフルスタック構成、Node.js 22.17 以上(Docker イメージは Node.js 22 系の最新) |
 | DB | SQLite(better-sqlite3)+ Drizzle ORM / drizzle-kit。クライアント側は IndexedDB(`idb`) |
 | 認証 | Argon2(`@node-rs/argon2`)+ サーバーセッション(httpOnly Cookie)、パスキー(`@simplewebauthn/server` / `browser` 14) |
 | PWA | Web App Manifest、Service Worker、Web Push(`web-push`) |
@@ -96,7 +96,7 @@ CI(`.github/workflows/ci.yml`)では main への push と全 PR で ESLint(`npm 
 
 ## ローカルでの起動方法
 
-CI と Docker イメージは Node.js 22 を使っている。
+Node.js 22.17 以上が必要(SvelteKit 3 の要件)。CI と Docker イメージは Node.js 22 系の最新を使っている。
 
 ```bash
 npm ci

@@ -11,7 +11,9 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+# 公開オリジンをビルドに焼き込むときだけ渡す(ローカル compose 用。本番の CI では渡さない)。
+ARG ORIGIN
+RUN ORIGIN=$ORIGIN npm run build
 
 # 本番用に devDependencies を落とす(ネイティブモジュールは残る)。
 RUN npm prune --omit=dev
