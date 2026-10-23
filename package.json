@@ -48,5 +48,10 @@
 		"drizzle-orm": "^0.45.2",
 		"idb": "^8.0.3",
 		"web-push": "^3.6.7"
+	},
+	"overrides": {
+		"@sveltejs/kit": {
+			"cookie": "^0.7.2"
+		}
 	}
 }
