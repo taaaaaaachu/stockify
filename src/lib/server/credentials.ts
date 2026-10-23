@@ -61,8 +61,20 @@ export function listPasskeyIds(db: Db, userId: string): { id: string; transports
 		.all();
 }
 
-export function addPasskey(db: Db, row: Omit<PasskeyRow, 'lastUsedAt'>): void {
-	db.insert(passkeys).values(row).run();
+/**
+ * パスキーを追加する。強制パスワード変更中なら一時パスワードを削除してパスキーのみの会員にし、
+ * 認証情報が減るので操作端末(keepSessionId)以外のセッションも無効化する(ADR 0011)。
+ */
+export function addPasskey(db: Db, row: Omit<PasskeyRow, 'lastUsedAt'>, keepSessionId?: string): void {
+	db.transaction(() => {
+		db.insert(passkeys).values(row).run();
+		const cleared = db
+			.update(users)
+			.set({ passwordHash: null, mustChangePassword: false })
+			.where(and(eq(users.id, row.userId), eq(users.mustChangePassword, true)))
+			.run();
+		if (cleared.changes > 0 && keepSessionId) deleteOtherSessions(db, row.userId, keepSessionId);
+	});
 }
 
 /** ログインに使われたパスキーのカウンタと最終使用日時を更新する。 */

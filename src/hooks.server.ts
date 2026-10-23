@@ -3,6 +3,7 @@ import { SESSION_COOKIE, validateSessionToken, invalidateSession } from '$lib/se
 import { HOUSEHOLD_COOKIE } from '$lib/server/sessionCookie';
 import { db } from '$lib/server/db';
 import { listUserHouseholds } from '$lib/server/households';
+import { allowedDuringForcedChange } from '$lib/server/apiGuard';
 import { dev } from '$app/environment';
 
 function cookieOpts(expires: Date) {
@@ -23,17 +24,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			event.locals.session = result.session;
 			if (result.user.mustChangePassword) {
 				const pathname = event.url.pathname;
-				const allowed =
-					pathname === '/account' ||
-					pathname === '/account/__data.json' ||
-					pathname === '/api/account/password' ||
-					pathname === '/logout' ||
-					pathname.startsWith('/_app/') ||
-					pathname === '/manifest.webmanifest' ||
-					pathname === '/service-worker.js' ||
-					pathname.startsWith('/icon') ||
-					pathname.startsWith('/apple-touch-icon');
-				if (!allowed) {
+				if (!allowedDuringForcedChange(pathname)) {
 					if (pathname.startsWith('/api/'))
 						return new Response(JSON.stringify({ message: 'パスワード変更が必要です。' }), {
 							status: 403,
@@ -51,7 +42,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	if (event.locals.user) {
+	// 強制パスワード変更中は世帯のデータも見せない(ADR 0011)。
+	if (event.locals.user && !event.locals.user.mustChangePassword) {
 		const households = listUserHouseholds(db, event.locals.user.id);
 		event.locals.households = households;
 

@@ -125,3 +125,22 @@ describe('renamePasskey / recordPasskeyUse', () => {
 		expect(row?.lastUsedAt).toBeTypeOf('number');
 	});
 });
+
+describe('addPasskey(強制パスワード変更中の会員)', () => {
+	it('一時パスワードを削除してパスキーのみの会員にし、操作端末以外のセッションを消す', () => {
+		addUser('u', 'temp');
+		db.update(users).set({ mustChangePassword: true }).where(eq(users.id, 'u')).run();
+		addPasskey(db, { id: 'pk1', userId: 'u', publicKey: Buffer.from([1]), counter: 0, transports: null, name: 'p', createdAt: 0 }, 'u-keep');
+		const row = db.select().from(users).where(eq(users.id, 'u')).get();
+		expect(row?.passwordHash).toBeNull();
+		expect(row?.mustChangePassword).toBe(false);
+		expect(sessionIds('u')).toEqual(['u-keep']);
+	});
+
+	it('通常の会員ならパスワードもセッションも残す', () => {
+		addUser('u', 'mine');
+		addPasskey(db, { id: 'pk1', userId: 'u', publicKey: Buffer.from([1]), counter: 0, transports: null, name: 'p', createdAt: 0 }, 'u-keep');
+		expect(db.select().from(users).where(eq(users.id, 'u')).get()?.passwordHash).toBe('mine');
+		expect(sessionIds('u')).toHaveLength(2);
+	});
+});

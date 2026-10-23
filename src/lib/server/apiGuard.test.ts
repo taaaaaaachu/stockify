@@ -1,5 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { MAX_OPERATION_DELAY_MS, operationTime, requireRecentAuth } from './apiGuard';
+import { MAX_OPERATION_DELAY_MS, allowedDuringForcedChange, operationTime, requireRecentAuth } from './apiGuard';
+
+describe('allowedDuringForcedChange', () => {
+	it('パスワード変更・パスキー登録・本人確認とアカウント画面・ログアウトだけ許す', () => {
+		for (const p of [
+			'/api/account/password',
+			'/api/account/reauth',
+			'/api/passkey/register/options',
+			'/api/passkey/register/verify',
+			'/account',
+			'/account/__data.json',
+			'/logout',
+			'/_app/immutable/x.js'
+		]) {
+			expect(allowedDuringForcedChange(p), p).toBe(true);
+		}
+		for (const p of ['/', '/api/state', '/api/account/passkeys/x', '/api/passkey/auth/options', '/settings', '/api/admin/users']) {
+			expect(allowedDuringForcedChange(p), p).toBe(false);
+		}
+	});
+});
 
 const NOW = Date.UTC(2026, 9, 2);
 const reqWith = (opAt?: string) =>

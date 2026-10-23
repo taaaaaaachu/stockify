@@ -26,7 +26,7 @@ export const POST: RequestHandler = async ({ locals, request, cookies, url }) =>
 		const user = requireRecentAuth(locals);
 		if (user.id !== pending.userId) throw error(403, '権限がありません。');
 		try {
-			addPasskey(db, { ...passkey, userId: user.id });
+			addPasskey(db, { ...passkey, userId: user.id }, user.sessionId);
 		} catch {
 			throw error(409, 'このパスキーは登録済みです。');
 		}

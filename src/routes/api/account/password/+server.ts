@@ -15,7 +15,7 @@ import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '$l
 /**
  * 本人によるパスワードの変更・設定。操作端末以外のセッションを無効化する。
  * パスワードを持つ会員は現在のパスワードで、持たない会員(パスキーのみ)は直近の本人確認で確かめる。
- * 強制パスワード変更中は一時パスワードでのログインを本人確認とみなす(ADR 0004)。
+ * 強制パスワード変更中は一時パスワードの再入力の代わりに直近の本人確認を求め、一時パスワードと同じものは拒否する(ADR 0011)。
  */
 export const POST: RequestHandler = async ({ locals, cookies, request, getClientAddress }) => {
 	const user = requireUser(locals);
@@ -33,7 +33,9 @@ export const POST: RequestHandler = async ({ locals, cookies, request, getClient
 		throw error(400, '新しいパスワードと確認用パスワードが一致しません。');
 	if (verifyCurrent && currentPassword === newPassword)
 		throw error(400, '現在のパスワードと異なるパスワードを設定してください。');
-	if (!user.mustChangePassword && !hasPassword) requireRecentAuth(locals);
+	if (user.mustChangePassword || !hasPassword) requireRecentAuth(locals);
+	if (user.mustChangePassword && (await verifyCredentials(user.username, newPassword)))
+		throw error(400, '一時パスワードとは別のパスワードにしてください。');
 	if (verifyCurrent) {
 		const ip = getClientAddress();
 		if (isAuthRateLimited(user.username, ip)) throw error(400, '現在のパスワードが違います。');

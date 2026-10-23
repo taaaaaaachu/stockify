@@ -30,6 +30,29 @@ export function requireRecentAuth(locals: App.Locals): AuthedUser & { sessionId:
 	return { ...user, sessionId: locals.session.id };
 }
 
+/** 強制パスワード変更中でも使える API。パスワード変更・パスキー登録と、その前の本人確認だけ(ADR 0011)。 */
+const FORCED_CHANGE_APIS = new Set([
+	'/api/account/password',
+	'/api/account/reauth',
+	'/api/passkey/register/options',
+	'/api/passkey/register/verify'
+]);
+
+/** 強制パスワード変更中の会員がこのパスを開けるか。それ以外のページはアカウント画面へ戻す。 */
+export function allowedDuringForcedChange(pathname: string): boolean {
+	return (
+		FORCED_CHANGE_APIS.has(pathname) ||
+		pathname === '/account' ||
+		pathname === '/account/__data.json' ||
+		pathname === '/logout' ||
+		pathname.startsWith('/_app/') ||
+		pathname === '/manifest.webmanifest' ||
+		pathname === '/service-worker.js' ||
+		pathname.startsWith('/icon') ||
+		pathname.startsWith('/apple-touch-icon')
+	);
+}
+
 export interface ActiveContext {
 	user: AuthedUser;
 	householdId: string;
