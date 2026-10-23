@@ -16,7 +16,7 @@ import {
 	type InviteRow,
 	type OwnershipTransferRow
 } from './db/schema';
-import type { HouseholdRole } from '$lib/rbac';
+import type { HouseholdRole } from '#lib/rbac.js';
 
 export function newId(): string {
 	return randomBytes(16).toString('hex');

@@ -1,4 +1,4 @@
-import type { ProductLink, Purchase, Subscription } from '$lib/types';
+import type { ProductLink, Purchase, Subscription } from '#lib/types.js';
 import { fetchSnapshot, sendOp, serverRefresh, SyncError } from './api';
 import { IndexedDbRepository } from './indexeddb';
 import type {

@@ -1,8 +1,8 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { hashPassword, validatePassword } from '$lib/server/auth';
-import { logInAfterReset } from '$lib/server/sessionCookie';
-import { consumeResetLink, findResetLink, RESET_LINK_INVALID } from '$lib/server/resetLinks';
+import { db } from '#lib/server/db/index.js';
+import { hashPassword, validatePassword } from '#lib/server/auth.js';
+import { logInAfterReset } from '#lib/server/sessionCookie.js';
+import { consumeResetLink, findResetLink, RESET_LINK_INVALID } from '#lib/server/resetLinks.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ params }) => {

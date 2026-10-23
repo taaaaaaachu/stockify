@@ -1,12 +1,12 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { version } from '$app/environment';
+	import { version } from '$app/env';
 	import { page } from '$app/state';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { store } from '$lib/app/store.svelte';
-	import PasswordChangeForm from '$lib/components/PasswordChangeForm.svelte';
+	import { store } from '#lib/app/store.svelte.js';
+	import PasswordChangeForm from '#lib/components/PasswordChangeForm.svelte';
 
 	let { data, children } = $props();
 
@@ -15,7 +15,10 @@
 
 		// ビルドごとにURLを変え、CDNに残った旧service-worker.jsを再利用させない。
 		navigator.serviceWorker
-			.register(`/service-worker.js?v=${encodeURIComponent(version)}`)
+			.register(`/service-worker.js?v=${encodeURIComponent(version)}`, {
+				// SvelteKit 3 は Service Worker を ES モジュールとしてバンドルする。
+				type: 'module'
+			})
 			.catch((error: unknown) => console.error('Service Workerの登録に失敗しました', error));
 	});
 
@@ -60,7 +63,7 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ householdId: id })
 		});
-		await invalidateAll();
+		await refreshAll();
 	}
 </script>
 
@@ -68,52 +71,65 @@
 	<header
 	style="border-bottom:1px solid var(--border); background:var(--card);
 	       position:sticky; top:0; z-index:10;"
->
-	<div
-		style="max-width:48rem; margin:0 auto; padding:0.75rem 1rem;
-		       display:flex; align-items:center; gap:1rem; flex-wrap:wrap;"
 	>
+		<div
+			style="max-width:48rem; margin:0 auto; padding:0.75rem 1rem;
+		       display:flex; align-items:center; gap:1rem; flex-wrap:wrap;"
+		>
 		<a href={resolve('/')} style="font-weight:700; color:var(--accent); text-decoration:none;">Stockify</a>
 		<nav style="display:flex; gap:0.75rem; font-size:0.9rem;">
-			{#each nav as n (n.href)}
-				<a
-					href={resolve(n.href)}
+				{#each nav as n (n.href)}
+					<a
+						href={resolve(n.href)}
 					style="text-decoration:none; color:{page.url.pathname === n.href
 						? 'var(--accent)'
 						: 'var(--muted)'};"
 				>
 					{n.label}
 				</a>
-			{/each}
-		</nav>
+				{/each}
+			</nav>
 
 		<div style="margin-left:auto; display:flex; align-items:center; gap:0.6rem; font-size:0.85rem;">
-			{#if data.user}
-				{#if data.households.length > 0}
-					<select
-						onchange={switchHousehold}
-						value={data.activeHousehold?.id}
-						style="padding:0.2rem 0.4rem; border:1px solid var(--border); border-radius:0.4rem;"
+				{#if data.user}
+					{#if data.households.length > 0}
+						<select
+							onchange={switchHousehold}
+							value={data.activeHousehold?.id}
+							style="padding:0.2rem 0.4rem; border:1px solid var(--border); border-radius:0.4rem;"
+						>
+							{#each data.households as h (h.id)}
+								<option value={h.id}>{h.name}</option>
+							{/each}
+						</select>
+					{/if}
+
+					<a
+						href={resolve('account')}
+						style="color:var(--muted); text-decoration:none;"
+					>{data.user.username}</a>
+
+					<form
+						method="POST"
+						action="/logout"
+						onsubmit={confirmLogout}
 					>
-						{#each data.households as h (h.id)}
-							<option value={h.id}>{h.name}</option>
-						{/each}
-					</select>
-				{/if}
-				<a href={resolve('/account')} style="color:var(--muted); text-decoration:none;">{data.user.username}</a>
-				<form method="POST" action="/logout" onsubmit={confirmLogout}>
-					<button
-						type="submit"
-						style="border:none; background:none; color:var(--muted); cursor:pointer; font-size:0.85rem;"
+						<button
+							type="submit"
+							style="border:none; background:none; color:var(--muted); cursor:pointer; font-size:0.85rem;"
 						>ログアウト</button
 					>
-				</form>
-			{:else}
-				<a href={resolve('/login')} style="color:var(--accent); text-decoration:none;">ログイン</a>
-				<span style="color:var(--muted);">(ゲスト)</span>
-			{/if}
+					</form>
+				{:else}
+					<a
+						href={resolve('login')}
+						style="color:var(--accent); text-decoration:none;"
+					>ログイン</a>
+
+					<span style="color:var(--muted);">(ゲスト)</span>
+				{/if}
+			</div>
 		</div>
-	</div>
 	</header>
 {/if}
 
@@ -121,7 +137,9 @@
 	{#if store.syncState !== 'synced' || store.pending > 0}
 		<p role="status" style="margin:0 0 1rem; padding:0.5rem 0.75rem; border-radius:0.5rem; border:1px solid var(--warn); color:var(--warn); background:var(--card); font-size:0.85rem;">
 			{#if store.syncState === 'auth'}
-				ログインの有効期限が切れたため同期できません。<a href={resolve('/login')}>ログインし直してください</a>。
+				ログインの有効期限が切れたため同期できません。
+				<a href={resolve('login')}>ログインし直してください</a>
+				。
 			{:else if store.syncState === 'offline'}
 				オフラインです。この端末に保存したデータを表示しています。
 			{/if}

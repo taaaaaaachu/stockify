@@ -3,7 +3,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { createDb, type Db } from './db';
 import { registerUser, createHousehold } from './households';
 import * as stock from './stock';
-import { MS_PER_DAY } from '$lib/domain/estimate';
+import { MS_PER_DAY } from '#lib/domain/estimate.js';
 
 let db: Db;
 let hhA: string;

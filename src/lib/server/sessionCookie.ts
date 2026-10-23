@@ -1,5 +1,5 @@
 import type { Cookies } from '@sveltejs/kit';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { SESSION_COOKIE, createSession } from './auth';
 import { db } from './db';
 import { listUserHouseholds } from './households';

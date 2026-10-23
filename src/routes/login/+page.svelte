@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { browserSupportsWebAuthnAutofill } from '@simplewebauthn/browser';
-	import { loginWithPasskey, isPasskeyCancel } from '$lib/app/passkey';
+	import { loginWithPasskey, isPasskeyCancel } from '#lib/app/passkey.js';
 	let { form, data } = $props();
 
 	let passkeyError = $state('');
@@ -13,7 +13,7 @@
 	async function passkeyLogin(useBrowserAutofill: boolean) {
 		try {
 			await loginWithPasskey(useBrowserAutofill);
-			await goto(resolve('/'), { invalidateAll: true });
+			await goto(resolve('/'), { refreshAll: true });
 		} catch (err) {
 			if (isPasskeyCancel(err)) return;
 			passkeyError = err instanceof Error ? err.message : 'パスキーでログインできませんでした。';
@@ -68,7 +68,10 @@
 	<button
 		type="submit"
 		style="background:var(--card); color:var(--accent); border:1px solid var(--accent); border-radius:0.5rem; padding:0.6rem; cursor:pointer;"
-		>ログイン</button
-	>
-	<a href={resolve('/register')} style="color:var(--muted); font-size:0.9rem;">アカウント登録はこちら</a>
+	>ログイン</button>
+
+	<a
+		href={resolve('register')}
+		style="color:var(--muted); font-size:0.9rem;"
+	>アカウント登録はこちら</a>
 </form>

@@ -1,7 +1,7 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { createHousehold } from '$lib/server/households';
-import { requireUser } from '$lib/server/apiGuard';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { createHousehold } from '#lib/server/households.js';
+import { requireUser } from '#lib/server/apiGuard.js';
 import type { RequestHandler } from './$types';
 
 /** super_adminが所属者なしの空世帯を作成する。 */
@@ -12,5 +12,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const name = typeof body?.name === 'string' ? body.name.trim() : '';
 	if (!name) throw error(400, '世帯名は必須です。');
 	const household = createHousehold(db, name);
-	return json({ id: household.id, name: household.name }, { status: 201 });
+	return Response.json({ id: household.id, name: household.name }, { status: 201 });
 };

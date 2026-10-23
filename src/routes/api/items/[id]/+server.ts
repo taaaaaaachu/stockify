@@ -1,8 +1,8 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
-import { parseNonNegativeNumber } from '$lib/server/inputValidation';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
+import { parseNonNegativeNumber } from '#lib/server/inputValidation.js';
 import type { RequestHandler } from './$types';
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -34,7 +34,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 	const item = stock.updateItem(db, householdId, params.id, patch);
 	if (!item) throw error(404, '品目が見つかりません。');
-	return json(item);
+	return Response.json(item);
 };
 
 export const DELETE: RequestHandler = ({ locals, params }) => {

@@ -1,6 +1,6 @@
-import { IndexedDbRepository } from '$lib/repo/indexeddb';
-import { MemberRepository, type SyncState } from '$lib/repo/member';
-import type { Repository } from '$lib/repo/types';
+import { IndexedDbRepository } from '#lib/repo/indexeddb.js';
+import { MemberRepository, type SyncState } from '#lib/repo/member.js';
+import type { Repository } from '#lib/repo/types.js';
 import type {
 	AdjustmentInput,
 	AppSettings,
@@ -8,10 +8,10 @@ import type {
 	PurchaseInput,
 	StockItemInput,
 	SubscriptionInput
-} from '$lib/repo/types';
-import type { InstanceRole, HouseholdRole } from '$lib/rbac';
-import type { ProductLink, Subscription } from '$lib/types';
-import { nextDeliveryAfterSkip, isAcceptableNextDelivery } from '$lib/domain/subscription';
+} from '#lib/repo/types.js';
+import type { InstanceRole, HouseholdRole } from '#lib/rbac.js';
+import type { ProductLink, Subscription } from '#lib/types.js';
+import { nextDeliveryAfterSkip, isAcceptableNextDelivery } from '#lib/domain/subscription.js';
 
 export interface AuthUser {
 	id: string;
@@ -178,7 +178,7 @@ class Store {
 	}
 	async editPurchase(
 		id: string,
-		patch: Partial<Omit<import('$lib/types').Purchase, 'id' | 'itemId'>>
+		patch: Partial<Omit<import('#lib/types.js').Purchase, 'id' | 'itemId'>>
 	): Promise<void> {
 		await this.repo.updatePurchase(id, patch);
 		await this.reload();

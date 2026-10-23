@@ -1,5 +1,5 @@
-import { deliveryPurchaseId, generateDueDeliveries } from '$lib/domain/subscription';
-import type { Repository } from '$lib/repo/types';
+import { deliveryPurchaseId, generateDueDeliveries } from '#lib/domain/subscription.js';
+import type { Repository } from '#lib/repo/types.js';
 
 /** 遅延生成の適用結果(サマリ)。 */
 export interface MaterializeResult {

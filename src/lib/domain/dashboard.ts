@@ -1,5 +1,5 @@
-import type { ProductLink, StockItem } from '$lib/types';
-import type { AppSettings, ItemBundle } from '$lib/repo/types';
+import type { ProductLink, StockItem } from '#lib/types.js';
+import type { AppSettings, ItemBundle } from '#lib/repo/types.js';
 import { estimate, estimateInputFromItem, MS_PER_DAY, type Estimate } from './estimate';
 
 /** ダッシュボード上の品目の状態。 */

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { TrajectoryPoint } from '$lib/domain/trajectory';
-	import { formatDate } from '$lib/format';
+	import type { TrajectoryPoint } from '#lib/domain/trajectory.js';
+	import { formatDate } from '#lib/format.js';
 
 	let { points, unit }: { points: TrajectoryPoint[]; unit: string } = $props();
 

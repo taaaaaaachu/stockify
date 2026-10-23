@@ -1,7 +1,7 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { requireUser } from '$lib/server/apiGuard';
-import { setHouseholdNotifyEnabled } from '$lib/server/households';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { requireUser } from '#lib/server/apiGuard.js';
+import { setHouseholdNotifyEnabled } from '#lib/server/households.js';
 import type { RequestHandler } from './$types';
 
 /** 世帯ごとの購入リマインド通知の受け取り可否を切り替える。所属している世帯のみ設定できる。 */
@@ -17,5 +17,5 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
 		throw error(400, 'その世帯には所属していません。');
 	}
 	setHouseholdNotifyEnabled(db, user.id, householdId, enabled);
-	return json({ householdId, enabled });
+	return Response.json({ householdId, enabled });
 };

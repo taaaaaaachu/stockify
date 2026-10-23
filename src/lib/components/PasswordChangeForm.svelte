@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import {
 		ApiError,
 		REAUTH_REQUIRED,
@@ -8,10 +8,10 @@
 		isPasskeyCancel,
 		reauthenticate,
 		withPasskeyReauth
-	} from '$lib/app/passkey';
+	} from '#lib/app/passkey.js';
 
 	/** hasPassword=false はパスキーのみの会員。現在のパスワードの代わりにパスキーで本人確認して設定する。 */
-	let { forced = false, hasPassword = true } = $props<{ forced?: boolean; hasPassword?: boolean }>();
+	let { forced = false, hasPassword = true }: { forced?: boolean; hasPassword?: boolean } = $props();
 	let currentPassword = $state('');
 	let newPassword = $state('');
 	let confirmPassword = $state('');
@@ -34,7 +34,7 @@
 			confirmPassword = '';
 			passkeyName = '';
 			successMessage = success;
-			await invalidateAll();
+			await refreshAll();
 		} catch (err) {
 			if (forced && err instanceof ApiError && err.status === REAUTH_REQUIRED) pending = { action, success };
 			else if (!isPasskeyCancel(err)) errorMessage = err instanceof Error ? err.message : 'パスワードの変更に失敗しました。';

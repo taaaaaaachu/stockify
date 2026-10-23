@@ -1,12 +1,12 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { createSession } from '$lib/server/auth';
-import { setSessionCookie, setHouseholdCookie, logInAfterReset } from '$lib/server/sessionCookie';
-import { requireRecentAuth } from '$lib/server/apiGuard';
-import { addPasskey, normalizePasskeyName } from '$lib/server/credentials';
-import { registerUser, REGISTER_ERROR_MESSAGES } from '$lib/server/households';
-import { takeChallenge, verifyRegistration } from '$lib/server/webauthn';
-import { consumeResetLink, RESET_LINK_INVALID } from '$lib/server/resetLinks';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { createSession } from '#lib/server/auth.js';
+import { setSessionCookie, setHouseholdCookie, logInAfterReset } from '#lib/server/sessionCookie.js';
+import { requireRecentAuth } from '#lib/server/apiGuard.js';
+import { addPasskey, normalizePasskeyName } from '#lib/server/credentials.js';
+import { registerUser, REGISTER_ERROR_MESSAGES } from '#lib/server/households.js';
+import { takeChallenge, verifyRegistration } from '#lib/server/webauthn.js';
+import { consumeResetLink, RESET_LINK_INVALID } from '#lib/server/resetLinks.js';
 import type { RequestHandler } from './$types';
 
 /** パスキー登録の完了。body: { response, name }。 */
@@ -32,7 +32,7 @@ export const POST: RequestHandler = async ({ locals, request, cookies, url }) =>
 		}
 		if (!userId) throw error(410, RESET_LINK_INVALID);
 		logInAfterReset(cookies, userId);
-		return json({ ok: true });
+		return Response.json({ ok: true });
 	}
 
 	if (pending.kind === 'add') {
@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ locals, request, cookies, url }) =>
 		} catch {
 			throw error(409, 'このパスキーは登録済みです。');
 		}
-		return json({ ok: true });
+		return Response.json({ ok: true });
 	}
 
 	// パスワードでの登録と同じ世帯処理を通す。招待・ブートストラップの可否はトランザクション内で再検証される
@@ -64,5 +64,5 @@ export const POST: RequestHandler = async ({ locals, request, cookies, url }) =>
 	const { token, expiresAt } = createSession(result.user.id);
 	setSessionCookie(cookies, token, expiresAt);
 	setHouseholdCookie(cookies, result.householdId);
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

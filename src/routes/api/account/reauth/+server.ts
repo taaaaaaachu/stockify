@@ -1,9 +1,9 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { markSessionVerified, verifyCredentials } from '$lib/server/auth';
-import { requireUser } from '$lib/server/apiGuard';
-import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '$lib/server/authRateLimit';
-import { takeChallenge, verifyAuthentication } from '$lib/server/webauthn';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { markSessionVerified, verifyCredentials } from '#lib/server/auth.js';
+import { requireUser } from '#lib/server/apiGuard.js';
+import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '#lib/server/authRateLimit.js';
+import { takeChallenge, verifyAuthentication } from '#lib/server/webauthn.js';
 import type { RequestHandler } from './$types';
 
 const FAILED = '本人確認できませんでした。';
@@ -32,5 +32,5 @@ export const POST: RequestHandler = async ({ locals, request, cookies, url, getC
 	}
 
 	markSessionVerified(locals.session!.id);
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

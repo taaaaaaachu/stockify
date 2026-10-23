@@ -1,5 +1,5 @@
-import { json, error } from '@sveltejs/kit';
-import { listUsers } from '$lib/server/auth';
+import { error } from '@sveltejs/kit';
+import { listUsers } from '#lib/server/auth.js';
 import type { RequestHandler } from './$types';
 
 function requireSuperAdmin(locals: App.Locals) {
@@ -10,5 +10,5 @@ function requireSuperAdmin(locals: App.Locals) {
 
 export const GET: RequestHandler = ({ locals }) => {
 	const user = requireSuperAdmin(locals);
-	return json(listUsers().filter((candidate) => candidate.id !== user.id));
+	return Response.json(listUsers().filter((candidate) => candidate.id !== user.id));
 };

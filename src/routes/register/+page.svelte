@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance, type SubmitFunction } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import type { SubmitFunction } from '@sveltejs/kit';
-	import { signupWithPasskey, isPasskeyCancel } from '$lib/app/passkey';
+	import { signupWithPasskey, isPasskeyCancel } from '#lib/app/passkey.js';
 	let { data, form } = $props();
 
 	let method = $state<'passkey' | 'password'>('passkey');
@@ -26,7 +25,7 @@
 				invite: String(fd.get('invite') ?? ''),
 				household: String(fd.get('household') ?? '')
 			});
-			await goto(resolve('/'), { invalidateAll: true });
+			await goto(resolve('/'), { refreshAll: true });
 		} catch (err) {
 			if (!isPasskeyCancel(err)) passkeyError = err instanceof Error ? err.message : '登録に失敗しました。';
 		} finally {
@@ -77,14 +76,22 @@
 		</label>
 	{/if}
 
-	{#if form?.error}<p style="color:var(--danger); margin:0;">{form.error}</p>{/if}
-	{#if passkeyError}<p style="color:var(--danger); margin:0;">{passkeyError}</p>{/if}
+	{#if form?.error}
+		<p style="color:var(--danger); margin:0;">{form.error}</p>
+	{/if}
+
+	{#if passkeyError}
+		<p style="color:var(--danger); margin:0;">{passkeyError}</p>
+	{/if}
 
 	<button
 		type="submit"
 		disabled={busy}
 		style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.6rem; cursor:pointer;"
-		>{busy ? '確認中…' : '登録する'}</button
-	>
-	<a href={resolve('/login')} style="color:var(--muted); font-size:0.9rem;">ログインはこちら</a>
+	>{busy ? '確認中…' : '登録する'}</button>
+
+	<a
+		href={resolve('login')}
+		style="color:var(--muted); font-size:0.9rem;"
+	>ログインはこちら</a>
 </form>

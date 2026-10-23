@@ -1,23 +1,23 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { normalizeNotifyMinute } from '$lib/notify-time';
-	import { store } from '$lib/app/store.svelte';
+	import { normalizeNotifyMinute } from '#lib/notify-time.js';
+	import { store } from '#lib/app/store.svelte.js';
 	import {
 		pushSupported,
 		pushConfigured,
 		isSubscribed,
 		enablePush,
 		disablePush
-	} from '$lib/app/push';
+	} from '#lib/app/push.js';
 
 	let { data } = $props();
 
 	let leadTime = $state('');
 	let saved = $state(false);
 
-	// 世帯ごとの通知ON/OFF。表示はサーバーデータ由来、保存後は invalidateAll で再取得する。
+	// 世帯ごとの通知ON/OFF。表示はサーバーデータ由来、保存後は refreshAll で再取得する。
 	const notifyHouseholds = $derived(data.notifyHouseholds);
 	let householdNotifyError = $state('');
 
@@ -34,7 +34,7 @@
 			householdNotifyError = '通知設定の保存に失敗しました。';
 		} finally {
 			// 成功・失敗どちらでもサーバー値へ表示を揃える(チェックボックスのずれを防ぐ)。
-			await invalidateAll();
+			await refreshAll();
 		}
 	}
 
@@ -53,7 +53,7 @@
 		if (!Number.isFinite(n) || n < 0) return;
 		await store.setDefaultLeadTime(n);
 		saved = true;
-		setTimeout(() => (saved = false), 1500);
+		setTimeout(() => saved = false, 1500);
 	}
 
 	// --- 通知 ---
@@ -67,11 +67,11 @@
 			pushState = 'unsupported';
 			return;
 		}
-		if (!(await pushConfigured())) {
+		if (!await pushConfigured()) {
 			pushState = 'unconfigured';
 			return;
 		}
-		pushState = (await isSubscribed()) ? 'on' : 'off';
+		pushState = await isSubscribed() ? 'on' : 'off';
 	}
 
 	onMount(refreshPushState);
@@ -116,9 +116,9 @@
 			body: JSON.stringify({ minuteOfDay })
 		});
 		if (!response.ok) return;
-		await invalidateAll();
+		await refreshAll();
 		notifyTimeSaved = true;
-		setTimeout(() => (notifyTimeSaved = false), 1500);
+		setTimeout(() => notifyTimeSaved = false, 1500);
 	}
 </script>
 
@@ -149,7 +149,9 @@
 		<h2 style="font-size:1.05rem;">購入リマインド通知</h2>
 		{#if !store.user}
 			<p style="color:var(--muted); font-size:0.9rem;">
-				通知は会員モードで使えます。<a href={resolve('/login')}>ログイン</a>してください。
+				通知は会員モードで使えます。
+				<a href={resolve('login')}>ログイン</a>
+				してください。
 			</p>
 		{:else if pushState === 'loading'}
 			<p style="color:var(--muted);">確認中…</p>
@@ -168,12 +170,11 @@
 				disabled={pushBusy}
 				style="border:none; border-radius:0.5rem; padding:0.5rem 0.9rem; cursor:pointer; color:#fff;
 				       background:{pushState === 'on' ? 'var(--danger)' : 'var(--accent)'};"
-			>
-				{pushState === 'on' ? '通知をオフにする' : '通知をオンにする'}
-			</button>
-			<span style="margin-left:0.5rem; color:var(--muted); font-size:0.85rem;">
-				現在: {pushState === 'on' ? 'オン' : 'オフ'}
-			</span>
+			>{pushState === 'on' ? '通知をオフにする' : '通知をオンにする'}</button>
+
+			<span
+				style="margin-left:0.5rem; color:var(--muted); font-size:0.85rem;"
+			>現在: {pushState === 'on' ? 'オン' : 'オフ'}</span>
 
 			<div style="margin-top:1rem;">
 				<label style="display:flex; flex-direction:column; gap:0.25rem; max-width:12rem;">

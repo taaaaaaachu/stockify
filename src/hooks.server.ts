@@ -1,10 +1,11 @@
-import { redirect, type Handle } from '@sveltejs/kit';
-import { SESSION_COOKIE, validateSessionToken, invalidateSession } from '$lib/server/auth';
-import { HOUSEHOLD_COOKIE } from '$lib/server/sessionCookie';
-import { db } from '$lib/server/db';
-import { listUserHouseholds } from '$lib/server/households';
-import { allowedDuringForcedChange } from '$lib/server/apiGuard';
-import { dev } from '$app/environment';
+import { redirect } from '@sveltejs/kit';
+import type { Handle } from '@sveltejs/kit/hooks';
+import { SESSION_COOKIE, validateSessionToken, invalidateSession } from '#lib/server/auth.js';
+import { HOUSEHOLD_COOKIE } from '#lib/server/sessionCookie.js';
+import { db } from '#lib/server/db/index.js';
+import { listUserHouseholds } from '#lib/server/households.js';
+import { allowedDuringForcedChange } from '#lib/server/apiGuard.js';
+import { dev } from '$app/env';
 
 function cookieOpts(expires: Date) {
 	return { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: !dev, expires };
@@ -52,8 +53,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 		// それ以外は現在の世帯を Cookie から解決。所属していなければ先頭にフォールバック。
 		const wanted = event.cookies.get(HOUSEHOLD_COOKIE);
 		const active = explicit
-			? (households.find((h) => h.id === explicit) ?? null)
-			: (households.find((h) => h.id === wanted) ?? households[0] ?? null);
+			? households.find((h) => h.id === explicit) ?? null
+			: households.find((h) => h.id === wanted) ?? households[0] ?? null;
 		event.locals.activeHousehold = active
 			? { id: active.id, name: active.name, role: active.role }
 			: null;

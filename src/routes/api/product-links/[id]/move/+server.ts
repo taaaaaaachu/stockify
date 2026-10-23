@@ -1,7 +1,7 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
@@ -11,5 +11,5 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const fromPosition = body?.fromPosition;
 	if (fromPosition !== undefined && !Number.isInteger(fromPosition)) throw error(400, '並べ替え元の位置が不正です。');
 	if (!stock.moveProductLink(db, householdId, params.id, body.direction, fromPosition)) throw error(404, '商品リンクが見つかりません。');
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

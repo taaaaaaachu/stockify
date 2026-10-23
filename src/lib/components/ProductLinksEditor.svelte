@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { productLinkLabel, normalizeProductLinkInput } from '$lib/productLinks';
-	import type { ProductLink } from '$lib/types';
-	import { store } from '$lib/app/store.svelte';
+	import { productLinkLabel, normalizeProductLinkInput } from '#lib/productLinks.js';
+	import type { ProductLink } from '#lib/types.js';
+	import { store } from '#lib/app/store.svelte.js';
 
 	let { itemId, links }: { itemId: string; links: ProductLink[] } = $props();
 	let label = $state('');

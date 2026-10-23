@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { IndexedDbRepository } from '$lib/repo/indexeddb';
+import { IndexedDbRepository } from '#lib/repo/indexeddb.js';
 import { materializeDueSubscriptions } from './subscriptions';
-import { MS_PER_DAY } from '$lib/domain/estimate';
+import { MS_PER_DAY } from '#lib/domain/estimate.js';
 
 const T0 = Date.UTC(2026, 0, 1);
 const day = (n: number) => T0 + n * MS_PER_DAY;

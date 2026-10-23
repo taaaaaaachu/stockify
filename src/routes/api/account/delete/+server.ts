@@ -1,10 +1,10 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { deleteUserAccount, verifyUserPassword } from '$lib/server/auth';
-import { clearSessionCookie } from '$lib/server/sessionCookie';
-import { requireRecentAuth, requireUser } from '$lib/server/apiGuard';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { deleteUserAccount, verifyUserPassword } from '#lib/server/auth.js';
+import { clearSessionCookie } from '#lib/server/sessionCookie.js';
+import { requireRecentAuth, requireUser } from '#lib/server/apiGuard.js';
 import type { RequestHandler } from './$types';
-import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '$lib/server/authRateLimit';
+import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '#lib/server/authRateLimit.js';
 
 /**
  * 本人のアカウント削除。password が送られたらそれで確認し(試行制限込み)、
@@ -34,5 +34,5 @@ export const DELETE: RequestHandler = async ({ locals, request, cookies, getClie
 		throw error(404, 'ユーザーが見つかりません。');
 	}
 	clearSessionCookie(cookies);
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

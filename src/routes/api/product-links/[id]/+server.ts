@@ -1,8 +1,8 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
-import { normalizeProductLinkInput } from '$lib/productLinks';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
+import { normalizeProductLinkInput } from '#lib/productLinks.js';
 import type { RequestHandler } from './$types';
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -13,7 +13,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	const input = normalizeProductLinkInput({ label: body?.label ?? current.label, url: body?.url ?? current.url });
 	if (!input) throw error(400, '商品リンクの表示名またはURLが不正です。');
 	try {
-		return json(stock.updateProductLink(db, householdId, params.id, input));
+		return Response.json(stock.updateProductLink(db, householdId, params.id, input));
 	} catch (e) {
 		if (e instanceof Error && e.message.includes('同じURL')) throw error(409, e.message);
 		throw e;

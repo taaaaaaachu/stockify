@@ -1,8 +1,8 @@
 import { redirect } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { listHouseholdInvites, listHouseholdMembers, listPendingOwnershipTransfers, listHouseholdSummaries } from '$lib/server/households';
-import { getCredentialSummary } from '$lib/server/credentials';
-import { canManageInvites, canManageMembers } from '$lib/rbac';
+import { db } from '#lib/server/db/index.js';
+import { listHouseholdInvites, listHouseholdMembers, listPendingOwnershipTransfers, listHouseholdSummaries } from '#lib/server/households.js';
+import { getCredentialSummary } from '#lib/server/credentials.js';
+import { canManageInvites, canManageMembers } from '#lib/rbac.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {

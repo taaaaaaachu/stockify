@@ -1,9 +1,9 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { createSession } from '$lib/server/auth';
-import { setSessionCookie, setHouseholdCookie } from '$lib/server/sessionCookie';
-import { listUserHouseholds } from '$lib/server/households';
-import { takeChallenge, verifyAuthentication } from '$lib/server/webauthn';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { createSession } from '#lib/server/auth.js';
+import { setSessionCookie, setHouseholdCookie } from '#lib/server/sessionCookie.js';
+import { listUserHouseholds } from '#lib/server/households.js';
+import { takeChallenge, verifyAuthentication } from '#lib/server/webauthn.js';
 import type { RequestHandler } from './$types';
 
 /** パスキーでログインする。body: { response }。署名検証なので試行制限の対象外(ADR 0010)。 */
@@ -20,5 +20,5 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	// パスワードでのログインと同じく、先頭の世帯をアクティブにしておく。
 	const households = listUserHouseholds(db, passkey.userId);
 	if (households[0]) setHouseholdCookie(cookies, households[0].id);
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

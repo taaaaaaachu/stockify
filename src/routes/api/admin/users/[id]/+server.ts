@@ -1,11 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { deleteUserAccount, verifyUserPassword } from '$lib/server/auth';
-import { users } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { deleteUserAccount, verifyUserPassword } from '#lib/server/auth.js';
+import { users } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { requireRecentAuth, requireUser } from '$lib/server/apiGuard';
+import { requireRecentAuth, requireUser } from '#lib/server/apiGuard.js';
 import type { RequestHandler } from './$types';
-import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '$lib/server/authRateLimit';
+import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '#lib/server/authRateLimit.js';
 
 /**
  * super_admin による他ユーザー削除。操作者の password が送られたらそれで確認し(試行制限込み)、

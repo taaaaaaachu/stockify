@@ -5,7 +5,7 @@ import { MemberRepository } from './member';
 import { IndexedDbRepository } from './indexeddb';
 import { classifyStatus } from './api';
 import type { Snapshot } from './types';
-import type { StockItem } from '$lib/types';
+import type { StockItem } from '#lib/types.js';
 
 const item = (id: string, name: string): StockItem => ({
 	id,

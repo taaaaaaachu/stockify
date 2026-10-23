@@ -1,10 +1,9 @@
-import { json } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
 	const { householdId } = requireHousehold(locals);
-	return json(stock.exportAll(db, householdId));
+	return Response.json(stock.exportAll(db, householdId));
 };

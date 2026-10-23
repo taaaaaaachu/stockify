@@ -6,7 +6,7 @@ import type {
 	RemainingAdjustment,
 	StockItem,
 	Subscription
-} from '$lib/types';
+} from '#lib/types.js';
 import type {
 	AdjustmentInput,
 	AppSettings,
@@ -74,7 +74,7 @@ export class IndexedDbRepository implements Repository {
 
 	async refresh(): Promise<void> {
 		// ゲストはクライアントで定期便を遅延生成する。
-		const { materializeDueSubscriptions } = await import('$lib/app/subscriptions');
+		const { materializeDueSubscriptions } = await import('#lib/app/subscriptions.js');
 		await materializeDueSubscriptions(this, Date.now());
 	}
 

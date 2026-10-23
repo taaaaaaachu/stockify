@@ -1,4 +1,4 @@
-import { MS_PER_DAY } from '$lib/domain/estimate';
+import { MS_PER_DAY } from '#lib/domain/estimate.js';
 
 /** epoch ミリ秒を「YYYY/MM/DD」で表す(ローカルタイム)。null は「—」。 */
 export function formatDate(ms: number | null): string {

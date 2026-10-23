@@ -1,11 +1,11 @@
 import { error } from '@sveltejs/kit';
-import type { HouseholdRole } from '$lib/rbac';
+import type { HouseholdRole } from '#lib/rbac.js';
 import { isRecentlyVerified } from './auth';
 
 interface AuthedUser {
 	id: string;
 	username: string;
-	instanceRole: import('$lib/rbac').InstanceRole;
+	instanceRole: import('#lib/rbac.js').InstanceRole;
 	mustChangePassword: boolean;
 }
 

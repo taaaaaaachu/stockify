@@ -7,7 +7,7 @@ import {
 	type EstimateInput,
 	type RateInterval
 } from './estimate';
-import type { Purchase, RanOutEvent, RemainingAdjustment } from '$lib/types';
+import type { Purchase, RanOutEvent, RemainingAdjustment } from '#lib/types.js';
 
 // テスト用の基準日時(2026-01-01T00:00:00Z)。
 const T0 = Date.UTC(2026, 0, 1);

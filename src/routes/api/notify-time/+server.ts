@@ -1,10 +1,10 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { users } from '$lib/server/db/schema';
-import { requireUser } from '$lib/server/apiGuard';
-import { normalizeNotifyMinute } from '$lib/notify-time';
-import { parseInteger } from '$lib/server/inputValidation';
+import { db } from '#lib/server/db/index.js';
+import { users } from '#lib/server/db/schema.js';
+import { requireUser } from '#lib/server/apiGuard.js';
+import { normalizeNotifyMinute } from '#lib/notify-time.js';
+import { parseInteger } from '#lib/server/inputValidation.js';
 import type { RequestHandler } from './$types';
 
 /** 購入リマインドを送る時刻(0:00 からの分)を15分単位へ切り捨てて設定する。 */
@@ -17,5 +17,5 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
 	}
 	const normalizedMinute = normalizeNotifyMinute(minute);
 	db.update(users).set({ notifyMinuteOfDay: normalizedMinute }).where(eq(users.id, user.id)).run();
-	return json({ minuteOfDay: normalizedMinute });
+	return Response.json({ minuteOfDay: normalizedMinute });
 };

@@ -1,16 +1,16 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { createInvite, listHouseholdInvites } from '$lib/server/households';
-import { requireHousehold } from '$lib/server/apiGuard';
-import { canManageInvites } from '$lib/rbac';
-import { parsePositiveNumber } from '$lib/server/inputValidation';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { createInvite, listHouseholdInvites } from '#lib/server/households.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
+import { canManageInvites } from '#lib/rbac.js';
+import { parsePositiveNumber } from '#lib/server/inputValidation.js';
 import type { RequestHandler } from './$types';
 
 /** 現在の世帯の招待一覧(owner のみ)。 */
 export const GET: RequestHandler = ({ locals }) => {
 	const { householdId, role } = requireHousehold(locals);
 	if (!canManageInvites(role)) throw error(403, '権限がありません。');
-	return json(listHouseholdInvites(db, householdId));
+	return Response.json(listHouseholdInvites(db, householdId));
 };
 
 /** 現在の世帯へ招くコードを発行(owner のみ)。expiresInDays が無ければ無期限。 */
@@ -25,5 +25,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		expiresAt = Date.now() + days * 24 * 60 * 60 * 1000;
 	}
 	const invite = createInvite(db, householdId, user.id, expiresAt);
-	return json({ id: invite.id, code: invite.code }, { status: 201 });
+	return Response.json({ id: invite.id, code: invite.code }, { status: 201 });
 };

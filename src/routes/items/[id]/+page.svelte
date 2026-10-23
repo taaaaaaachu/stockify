@@ -2,10 +2,10 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { store } from '$lib/app/store.svelte';
-	import { buildRow } from '$lib/domain/dashboard';
-	import { estimateInputFromItem } from '$lib/domain/estimate';
-	import { remainingTrajectory } from '$lib/domain/trajectory';
+	import { store } from '#lib/app/store.svelte.js';
+	import { buildRow } from '#lib/domain/dashboard.js';
+	import { estimateInputFromItem } from '#lib/domain/estimate.js';
+	import { remainingTrajectory } from '#lib/domain/trajectory.js';
 	import {
 		formatDate,
 		formatDepletion,
@@ -13,11 +13,11 @@
 		formatQuantity,
 		localDateInput,
 		dateInputToTimestamp
-	} from '$lib/format';
-	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import RemainingBar from '$lib/components/RemainingBar.svelte';
-	import HistoryChart from '$lib/components/HistoryChart.svelte';
-	import ProductLinksEditor from '$lib/components/ProductLinksEditor.svelte';
+	} from '#lib/format.js';
+	import StatusBadge from '#lib/components/StatusBadge.svelte';
+	import RemainingBar from '#lib/components/RemainingBar.svelte';
+	import HistoryChart from '#lib/components/HistoryChart.svelte';
+	import ProductLinksEditor from '#lib/components/ProductLinksEditor.svelte';
 
 	const id = $derived(page.params.id ?? '');
 

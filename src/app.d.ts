@@ -1,5 +1,5 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
-import type { InstanceRole, HouseholdRole } from '$lib/rbac';
+import type { InstanceRole, HouseholdRole } from '#lib/rbac.js';
 
 declare global {
 	namespace App {

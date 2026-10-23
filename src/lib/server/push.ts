@@ -1,15 +1,15 @@
 import webpush from 'web-push';
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { env } from '$env/dynamic/private';
+import { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } from '$app/env/private';
 import type { Db } from './db';
 import { pushSubscriptions, users, type PushSubscriptionRow } from './db/schema';
 import { listUserHouseholds } from './households';
 import { listBundles } from './stock';
-import { buildDashboard, shoppingList } from '$lib/domain/dashboard';
-import { normalizeNotifyMinute, NOTIFY_SLOT_MINUTES } from '$lib/notify-time';
+import { buildDashboard, shoppingList } from '#lib/domain/dashboard.js';
+import { normalizeNotifyMinute, NOTIFY_SLOT_MINUTES } from '#lib/notify-time.js';
 
-export { normalizeNotifyMinute, NOTIFY_SLOT_MINUTES } from '$lib/notify-time';
+export { normalizeNotifyMinute, NOTIFY_SLOT_MINUTES } from '#lib/notify-time.js';
 
 /** 通知間引きの既定クールダウン(この時間内は同じ端末へ再送しない)。 */
 export const NOTIFY_COOLDOWN_MS = 20 * 60 * 60 * 1000; // 20時間
@@ -22,10 +22,15 @@ interface Vapid {
 
 /** 環境変数から VAPID 設定を読む。未設定なら null(プッシュ機能は無効)。 */
 export function getVapid(): Vapid | null {
-	const publicKey = env.VAPID_PUBLIC_KEY;
-	const privateKey = env.VAPID_PRIVATE_KEY;
+	const publicKey = VAPID_PUBLIC_KEY;
+	const privateKey = VAPID_PRIVATE_KEY;
 	if (!publicKey || !privateKey) return null;
-	return { publicKey, privateKey, subject: env.VAPID_SUBJECT ?? 'mailto:admin@example.com' };
+
+	return {
+		publicKey,
+		privateKey,
+		subject: VAPID_SUBJECT
+	};
 }
 
 /** プッシュ機能が使えるか(VAPID 設定済みか)。 */

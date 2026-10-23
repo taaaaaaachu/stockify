@@ -1,9 +1,9 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { operationTime, requireHousehold } from '$lib/server/apiGuard';
-import { parseClientId, parseFiniteNumber, parsePositiveNumber } from '$lib/server/inputValidation';
-import { isAcceptableNextDelivery } from '$lib/domain/subscription';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { operationTime, requireHousehold } from '#lib/server/apiGuard.js';
+import { parseClientId, parseFiniteNumber, parsePositiveNumber } from '#lib/server/inputValidation.js';
+import { isAcceptableNextDelivery } from '#lib/domain/subscription.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -36,5 +36,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (!sub) throw error(404, '品目が見つかりません。');
 	// 追加直後に過去分があれば生成しておく。
 	stock.materializeDueSubscriptions(db, householdId, Date.now());
-	return json(sub, { status: 201 });
+	return Response.json(sub, { status: 201 });
 };

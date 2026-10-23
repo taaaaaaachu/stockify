@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
-	import { store } from '$lib/app/store.svelte';
-	import { IndexedDbRepository } from '$lib/repo/indexeddb';
-	import { formatDate } from '$lib/format';
-	import { buildInviteRequestBody } from '$lib/app/inviteRequest';
-	import PasswordChangeForm from '$lib/components/PasswordChangeForm.svelte';
-	import CredentialsSection from '$lib/components/CredentialsSection.svelte';
-	import { api, isPasskeyCancel, withPasskeyReauth } from '$lib/app/passkey';
+	import { refreshAll } from '$app/navigation';
+	import { store } from '#lib/app/store.svelte.js';
+	import { IndexedDbRepository } from '#lib/repo/indexeddb.js';
+	import { formatDate } from '#lib/format.js';
+	import { buildInviteRequestBody } from '#lib/app/inviteRequest.js';
+	import PasswordChangeForm from '#lib/components/PasswordChangeForm.svelte';
+	import CredentialsSection from '#lib/components/CredentialsSection.svelte';
+	import { api, isPasskeyCancel, withPasskeyReauth } from '#lib/app/passkey.js';
 
 	let { data } = $props();
 	/** パスワードのない会員(パスキーのみ)は、削除の確認をパスワードの代わりにパスキーの本人確認で行う。 */
@@ -76,7 +76,7 @@
 		});
 		if (!res.ok) { joinError = (await res.json().catch(() => ({}))).message ?? '世帯への参加に失敗しました。'; return; }
 		inviteCode = '';
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	async function loadAdminUsers() {
@@ -174,7 +174,7 @@
 			memberError = result.message ?? 'managerの任命に失敗しました。';
 				return;
 			}
-			await invalidateAll();
+			await refreshAll();
 		} finally {
 			busy = false;
 		}
@@ -190,7 +190,7 @@
 				memberError = result.message ?? 'managerの解任に失敗しました。';
 				return;
 			}
-			await invalidateAll();
+			await refreshAll();
 		} finally {
 			busy = false;
 		}
@@ -206,7 +206,7 @@
 				memberError = result.message ?? 'メンバーの除名に失敗しました。';
 				return;
 			}
-			await invalidateAll();
+			await refreshAll();
 		} finally {
 			busy = false;
 		}
@@ -230,7 +230,7 @@
 			const json = await res.json();
 			lastCode = json.code ?? null;
 			if (lastCode) await copyToClipboard(lastCode);
-			await invalidateAll();
+			await refreshAll();
 		} finally {
 			busy = false;
 		}
@@ -238,16 +238,16 @@
 
 	async function revoke(id: string) {
 		await fetch(`/api/invites/${id}/revoke`, { method: 'POST' });
-		await invalidateAll();
+		await refreshAll();
 	}
 	async function remove(id: string) {
 		await fetch(`/api/invites/${id}`, { method: 'DELETE' });
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	async function acceptTransfer(id: string, accept: boolean) {
 		await fetch(`/api/households/transfers/${id}/${accept ? 'accept' : 'reject'}`, { method: 'POST' });
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	async function createAdminHousehold(e: SubmitEvent) {

@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { store } from '$lib/app/store.svelte';
+	import { store } from '#lib/app/store.svelte.js';
 	import {
 		dateInputToTimestamp,
 		formatDate,
 		formatDaysUntil,
 		formatQuantity,
 		localDateInput
-	} from '$lib/format';
-	import { MS_PER_DAY } from '$lib/domain/estimate';
+	} from '#lib/format.js';
+	import { MS_PER_DAY } from '#lib/domain/estimate.js';
 
 	type SubscriptionRow = {
 		item: (typeof store.bundles)[number]['item'];

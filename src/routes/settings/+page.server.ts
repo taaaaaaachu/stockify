@@ -1,5 +1,5 @@
-import { db } from '$lib/server/db';
-import { listUserHouseholds } from '$lib/server/households';
+import { db } from '#lib/server/db/index.js';
+import { listUserHouseholds } from '#lib/server/households.js';
 import type { PageServerLoad } from './$types';
 
 /** 会員は世帯ごとの通知ON/OFF状態を渡す。ゲストは空配列。 */

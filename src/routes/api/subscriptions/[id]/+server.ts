@@ -1,9 +1,9 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { operationTime, requireHousehold } from '$lib/server/apiGuard';
-import { parsePositiveNumber } from '$lib/server/inputValidation';
-import { isAcceptableNextDelivery } from '$lib/domain/subscription';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { operationTime, requireHousehold } from '#lib/server/apiGuard.js';
+import { parsePositiveNumber } from '#lib/server/inputValidation.js';
+import { isAcceptableNextDelivery } from '#lib/domain/subscription.js';
 import type { RequestHandler } from './$types';
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -34,7 +34,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 	const sub = stock.updateSubscription(db, householdId, params.id, patch);
 	if (!sub) throw error(404, '定期便が見つかりません。');
-	return json(sub);
+	return Response.json(sub);
 };
 
 export const DELETE: RequestHandler = ({ locals, params }) => {

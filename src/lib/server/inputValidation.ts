@@ -1,5 +1,5 @@
-import type { Snapshot } from '$lib/repo/types';
-import { normalizeProductLinkInput } from '$lib/productLinks';
+import type { Snapshot } from '#lib/repo/types.js';
+import { normalizeProductLinkInput } from '#lib/productLinks.js';
 
 const MAX_IMPORT_ITEMS = 10_000;
 const MAX_IMPORT_CHILDREN = 100_000;

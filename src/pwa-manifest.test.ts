@@ -12,7 +12,7 @@ interface WebAppManifest {
 	icons: ManifestIcon[];
 }
 
-const serviceWorkerSource = readFileSync(new URL('./service-worker.ts', import.meta.url), 'utf8');
+const serviceWorkerSource = readFileSync(new URL('./service-worker/index.ts', import.meta.url), 'utf8');
 const appTemplate = readFileSync(new URL('./app.html', import.meta.url), 'utf8');
 const offlinePage = readFileSync(new URL('../static/offline.html', import.meta.url), 'utf8');
 const rootLayout = readFileSync(new URL('./routes/+layout.svelte', import.meta.url), 'utf8');
@@ -50,9 +50,9 @@ describe('PWA manifest', () => {
 
 	it('ビルドversion付きURLでService Workerを登録する', () => {
 		expect(viteConfig).toMatch(/serviceWorker:\s*{\s*[^}]*register:\s*false/s);
-		expect(rootLayout).toContain("import { version } from '$app/environment'");
-		expect(rootLayout).toContain(
-			'.register(`/service-worker.js?v=${encodeURIComponent(version)}`)'
+		expect(rootLayout).toContain("import { version } from '$app/env'");
+		expect(rootLayout).toMatch(
+			/\.register\(`\/service-worker\.js\?v=\$\{encodeURIComponent\(version\)\}`,\s*{[^}]*type:\s*'module'/s
 		);
 	});
 });

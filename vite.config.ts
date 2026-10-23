@@ -11,6 +11,9 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 			adapter: adapter(),
+			// 公開オリジン。本番(Cloudflare Tunnel 配下)は未指定で、Host ヘッダーと https から決まる。
+			// http で直接アクセスするローカル compose だけ、ビルド時の ORIGIN で明示する(CSRF とパスキーの検証に使う)。
+			paths: { origin: process.env.ORIGIN || undefined },
 			serviceWorker: {
 				// Cloudflare の静的ファイルキャッシュを避けるため、layout からversion付きURLで登録する。
 				register: false

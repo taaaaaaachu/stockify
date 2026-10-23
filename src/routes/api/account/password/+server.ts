@@ -1,16 +1,16 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { requireRecentAuth, requireUser } from '$lib/server/apiGuard';
-import { getCredentialSummary, removePassword } from '$lib/server/credentials';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { requireRecentAuth, requireUser } from '#lib/server/apiGuard.js';
+import { getCredentialSummary, removePassword } from '#lib/server/credentials.js';
 import {
 	changePassword,
 	hashPassword,
 	SESSION_COOKIE,
 	validatePassword,
 	verifyCredentials
-} from '$lib/server/auth';
+} from '#lib/server/auth.js';
 import type { RequestHandler } from './$types';
-import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '$lib/server/authRateLimit';
+import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '#lib/server/authRateLimit.js';
 
 /**
  * 本人によるパスワードの変更・設定。操作端末以外のセッションを無効化する。
@@ -48,7 +48,7 @@ export const POST: RequestHandler = async ({ locals, cookies, request, getClient
 	const token = cookies.get(SESSION_COOKIE);
 	if (!token) throw error(401, 'ログインが必要です。');
 	changePassword(user.id, await hashPassword(newPassword), token);
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };
 
 /** パスワードの削除(パスキーのみの会員にする)。パスキーが無ければ 409。 */
@@ -63,5 +63,5 @@ export const DELETE: RequestHandler = async ({ locals }) => {
 		}
 		throw error(404, 'パスワードは設定されていません。');
 	}
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

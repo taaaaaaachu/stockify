@@ -1,7 +1,7 @@
-import { json, error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
-import { db } from '$lib/server/db';
-import { notifyDueRestocks, sendWebPush, NOTIFY_COOLDOWN_MS } from '$lib/server/push';
+import { error } from '@sveltejs/kit';
+import { CRON_SECRET } from '$app/env/private';
+import { db } from '#lib/server/db/index.js';
+import { notifyDueRestocks, sendWebPush, NOTIFY_COOLDOWN_MS } from '#lib/server/push.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
  * CRON_SECRET を Authorization: Bearer <secret> または x-cron-secret で検証する。
  */
 export const POST: RequestHandler = async ({ request }) => {
-	const secret = env.CRON_SECRET;
+	const secret = CRON_SECRET;
 	if (!secret) throw error(503, 'cron が設定されていません(CRON_SECRET 未設定)。');
 	const auth = request.headers.get('authorization');
 	const bearer = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
@@ -26,5 +26,5 @@ export const POST: RequestHandler = async ({ request }) => {
 		cooldownMs: NOTIFY_COOLDOWN_MS,
 		nowMinuteOfDay
 	});
-	return json(result);
+	return Response.json(result);
 };

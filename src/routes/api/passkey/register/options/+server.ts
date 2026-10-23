@@ -1,11 +1,11 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { validateUsername } from '$lib/server/auth';
-import { requireRecentAuth } from '$lib/server/apiGuard';
-import { listPasskeyIds } from '$lib/server/credentials';
-import { countUsers, newId, precheckRegistration, REGISTER_ERROR_MESSAGES } from '$lib/server/households';
-import { registrationOptions, saveChallenge } from '$lib/server/webauthn';
-import { findResetLink, RESET_LINK_INVALID } from '$lib/server/resetLinks';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { validateUsername } from '#lib/server/auth.js';
+import { requireRecentAuth } from '#lib/server/apiGuard.js';
+import { listPasskeyIds } from '#lib/server/credentials.js';
+import { countUsers, newId, precheckRegistration, REGISTER_ERROR_MESSAGES } from '#lib/server/households.js';
+import { registrationOptions, saveChallenge } from '#lib/server/webauthn.js';
+import { findResetLink, RESET_LINK_INVALID } from '#lib/server/resetLinks.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -23,14 +23,14 @@ export const POST: RequestHandler = async ({ locals, request, cookies, url }) =>
 		// 既存のパスキーは再設定で消えるので除外しない。
 		const opts = await registrationOptions(url, { id: link.userId, username: link.username }, []);
 		saveChallenge(cookies, 'reg', opts.challenge, { kind: 'reset', token: body.resetToken });
-		return json(opts);
+		return Response.json(opts);
 	}
 
 	if (locals.user) {
 		const user = requireRecentAuth(locals);
 		const opts = await registrationOptions(url, user, listPasskeyIds(db, user.id));
 		saveChallenge(cookies, 'reg', opts.challenge, { kind: 'add', userId: user.id });
-		return json(opts);
+		return Response.json(opts);
 	}
 
 	const username = String(body?.username ?? '').trim();
@@ -55,5 +55,5 @@ export const POST: RequestHandler = async ({ locals, request, cookies, url }) =>
 		inviteCode,
 		householdName
 	});
-	return json(opts);
+	return Response.json(opts);
 };

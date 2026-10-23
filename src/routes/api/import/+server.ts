@@ -1,9 +1,9 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
-import { isValidSnapshot } from '$lib/server/inputValidation';
-import type { Snapshot } from '$lib/repo/types';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
+import { isValidSnapshot } from '#lib/server/inputValidation.js';
+import type { Snapshot } from '#lib/repo/types.js';
 import type { RequestHandler } from './$types';
 
 /** ゲスト(IndexedDB)のスナップショットを現在の世帯へ取り込む(単純追記)。 */
@@ -20,5 +20,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		adjustments: body.adjustments ?? [],
 		subscriptions: body.subscriptions ?? []
 	};
-	return json(stock.importSnapshot(db, householdId, snapshot));
+	return Response.json(stock.importSnapshot(db, householdId, snapshot));
 };

@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals, params }) => {

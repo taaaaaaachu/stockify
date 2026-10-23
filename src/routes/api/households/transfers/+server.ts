@@ -1,11 +1,11 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { requestOwnershipTransfer, listPendingOwnershipTransfers } from '$lib/server/households';
-import { requireHousehold, requireUser } from '$lib/server/apiGuard';
-import { canTransferOwnership } from '$lib/rbac';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { requestOwnershipTransfer, listPendingOwnershipTransfers } from '#lib/server/households.js';
+import { requireHousehold, requireUser } from '#lib/server/apiGuard.js';
+import { canTransferOwnership } from '#lib/rbac.js';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = ({ locals }) => json(listPendingOwnershipTransfers(db, requireUser(locals).id));
+export const GET: RequestHandler = ({ locals }) => Response.json(listPendingOwnershipTransfers(db, requireUser(locals).id));
 
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const { householdId, role, user } = requireHousehold(locals);
@@ -14,5 +14,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const candidateUserId = typeof body?.candidateUserId === 'string' ? body.candidateUserId : '';
 	const transfer = requestOwnershipTransfer(db, householdId, user.id, candidateUserId);
 	if (!transfer) throw error(400, '対象ユーザーを交代候補にできません。保留中の申請がある可能性もあります。');
-	return json(transfer, { status: 201 });
+	return Response.json(transfer, { status: 201 });
 };

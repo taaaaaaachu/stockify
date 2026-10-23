@@ -1,10 +1,10 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { createSession, verifyCredentials } from '$lib/server/auth';
-import { setSessionCookie, setHouseholdCookie } from '$lib/server/sessionCookie';
-import { db } from '$lib/server/db';
-import { listUserHouseholds } from '$lib/server/households';
+import { createSession, verifyCredentials } from '#lib/server/auth.js';
+import { setSessionCookie, setHouseholdCookie } from '#lib/server/sessionCookie.js';
+import { db } from '#lib/server/db/index.js';
+import { listUserHouseholds } from '#lib/server/households.js';
 import type { Actions, PageServerLoad } from './$types';
-import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '$lib/server/authRateLimit';
+import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '#lib/server/authRateLimit.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) throw redirect(303, '/');

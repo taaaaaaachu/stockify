@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { remainingTrajectory } from './trajectory';
 import { MS_PER_DAY, type EstimateInput } from './estimate';
-import type { Purchase } from '$lib/types';
+import type { Purchase } from '#lib/types.js';
 
 const T0 = Date.UTC(2026, 0, 1);
 const day = (n: number) => T0 + n * MS_PER_DAY;

@@ -23,7 +23,7 @@ import type {
 	StockItem,
 	Subscription
 	, ProductLink
-} from '$lib/types';
+} from '#lib/types.js';
 import type {
 	AdjustmentInput,
 	AppSettings,
@@ -34,8 +34,8 @@ import type {
 	StockItemInput,
 	SubscriptionInput
 	, ProductLinkInput
-} from '$lib/repo/types';
-import { deliveryPurchaseId, generateDueDeliveries } from '$lib/domain/subscription';
+} from '#lib/repo/types.js';
+import { deliveryPurchaseId, generateDueDeliveries } from '#lib/domain/subscription.js';
 
 // --- 行 → ドメイン型 ---
 

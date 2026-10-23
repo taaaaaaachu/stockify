@@ -1,8 +1,8 @@
 import { error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { deleteInvite } from '$lib/server/households';
-import { requireHousehold } from '$lib/server/apiGuard';
-import { canManageInvites } from '$lib/rbac';
+import { db } from '#lib/server/db/index.js';
+import { deleteInvite } from '#lib/server/households.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
+import { canManageInvites } from '#lib/rbac.js';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals, params }) => {

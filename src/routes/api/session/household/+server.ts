@@ -1,6 +1,6 @@
-import { json, error } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/apiGuard';
-import { setHouseholdCookie } from '$lib/server/sessionCookie';
+import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/apiGuard.js';
+import { setHouseholdCookie } from '#lib/server/sessionCookie.js';
 import type { RequestHandler } from './$types';
 
 /** 現在の世帯を切り替える。所属している世帯のみ選択できる。 */
@@ -11,5 +11,5 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 	const belongs = locals.households.some((h) => h.id === householdId);
 	if (!belongs) throw error(400, 'その世帯には所属していません。');
 	setHouseholdCookie(cookies, householdId);
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

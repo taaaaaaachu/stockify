@@ -7,7 +7,7 @@ import {
 	MAX_BACKFILL
 } from './subscription';
 import { MS_PER_DAY } from './estimate';
-import type { Subscription } from '$lib/types';
+import type { Subscription } from '#lib/types.js';
 
 const T0 = Date.UTC(2026, 0, 1);
 const day = (n: number) => T0 + n * MS_PER_DAY;

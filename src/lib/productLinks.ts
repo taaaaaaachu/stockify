@@ -1,4 +1,4 @@
-import type { ProductLink } from '$lib/types';
+import type { ProductLink } from '#lib/types.js';
 
 export const PRODUCT_LINK_LABEL_MAX_LENGTH = 100;
 export const PRODUCT_LINK_URL_MAX_LENGTH = 2048;

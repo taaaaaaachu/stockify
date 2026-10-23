@@ -1,9 +1,9 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
-import { normalizeProductLinkInput } from '$lib/productLinks';
-import { parseClientId } from '$lib/server/inputValidation';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
+import { normalizeProductLinkInput } from '#lib/productLinks.js';
+import { parseClientId } from '#lib/server/inputValidation.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -17,7 +17,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	try {
 		const link = stock.createProductLink(db, householdId, { itemId, ...input }, id);
 		if (!link) throw error(404, '品目が見つかりません。');
-		return json(link, { status: 201 });
+		return Response.json(link, { status: 201 });
 	} catch (e) {
 		if (e instanceof Error && e.message.includes('同じURL')) throw error(409, e.message);
 		throw e;

@@ -5,7 +5,7 @@ import type {
 	RemainingAdjustment,
 	StockItem,
 	Subscription
-} from '$lib/types';
+} from '#lib/types.js';
 
 /**
  * 会員がサーバーへ未送信の操作(ADR 0009)。送信時は API へそのまま再現する。

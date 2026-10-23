@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { store } from '$lib/app/store.svelte';
-	import { localDateInput, dateInputToTimestamp } from '$lib/format';
+	import { store } from '#lib/app/store.svelte.js';
+	import { localDateInput, dateInputToTimestamp } from '#lib/format.js';
 
 	let name = $state('');
 	let unit = $state('ml');

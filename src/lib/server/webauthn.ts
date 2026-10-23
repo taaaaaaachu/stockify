@@ -9,14 +9,14 @@ import {
 	type RegistrationResponseJSON,
 	type AuthenticationResponseJSON
 } from '@simplewebauthn/server';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import type { Db } from './db';
 import type { PasskeyRow } from './db/schema';
 import { getPasskey, recordPasskeyUse } from './credentials';
 
 /**
  * WebAuthn(パスキー)の儀式まわり。RP ID / オリジンはリクエスト URL から取る
- * (本番は adapter-node の ORIGIN で公開ドメインになる)。
+ * (本番は cloudflared が転送する Host ヘッダーから公開ドメインになる)。
  */
 
 const RP_NAME = 'Stockify';
@@ -26,13 +26,13 @@ const CHALLENGE_TTL_MS = 1000 * 60 * 5;
  * 登録の待ち状態。signup = 未登録者の会員登録(世帯処理は確定時に registerUser で行う)、
  * add = ログイン中の会員のパスキー追加、reset = リセットリンクでの再設定(ADR 0011)。
  */
-export type RegistrationPending =
-	| {
-			kind: 'signup';
-			userId: string;
-			username: string;
-			requireInvite: boolean;
-			inviteCode: string;
+export type RegistrationPending = 
+	{ 
+		kind: 'signup';
+		userId: string;
+		username: string;
+		requireInvite: boolean;
+		inviteCode: string;
 			householdName: string;
 	  }
 	| { kind: 'add'; userId: string }
@@ -88,7 +88,9 @@ export function takeChallenge(
 }
 
 function parseTransports(json: string | null): AuthenticatorTransport[] | undefined {
-	return json ? (JSON.parse(json) as AuthenticatorTransport[]) : undefined;
+	return json
+		? JSON.parse(json) as AuthenticatorTransport[]
+		: undefined;
 }
 
 export function registrationOptions(

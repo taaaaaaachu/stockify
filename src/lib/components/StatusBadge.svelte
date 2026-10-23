@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { StockStatus } from '$lib/domain/dashboard';
+	import type { StockStatus } from '#lib/domain/dashboard.js';
 
 	let { status }: { status: StockStatus } = $props();
 

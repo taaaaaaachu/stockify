@@ -1,8 +1,8 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
-import { parseClientId, parseFiniteNumber, parseNonNegativeNumber, parsePositiveNumber } from '$lib/server/inputValidation';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
+import { parseClientId, parseFiniteNumber, parseNonNegativeNumber, parsePositiveNumber } from '#lib/server/inputValidation.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -32,5 +32,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		source
 	}, id);
 	if (!purchase) throw error(404, '品目が見つかりません。');
-	return json(purchase, { status: 201 });
+	return Response.json(purchase, { status: 201 });
 };

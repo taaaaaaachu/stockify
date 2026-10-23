@@ -1,8 +1,8 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import * as stock from '$lib/server/stock';
-import { requireHousehold } from '$lib/server/apiGuard';
-import { parseClientId, parseNonNegativeNumber } from '$lib/server/inputValidation';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import * as stock from '#lib/server/stock.js';
+import { requireHousehold } from '#lib/server/apiGuard.js';
+import { parseClientId, parseNonNegativeNumber } from '#lib/server/inputValidation.js';
 import type { RequestHandler } from './$types';
 
 function str(v: unknown): string {
@@ -33,5 +33,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		provisionalDaysToDeplete: optionalNonNegativeNumber(body?.provisionalDaysToDeplete, '仮の消費日数')
 	}, id);
 	if (!item) throw error(404, '品目が見つかりません。');
-	return json(item, { status: 201 });
+	return Response.json(item, { status: 201 });
 };

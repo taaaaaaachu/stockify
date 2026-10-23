@@ -1,6 +1,6 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { issueResetLink, revokeResetLink } from '$lib/server/resetLinks';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { issueResetLink, revokeResetLink } from '#lib/server/resetLinks.js';
 import type { RequestHandler } from './$types';
 
 /** 管理者リセットと同じく、super_admin が自分以外を対象にする(ADR 0004, 0011)。 */
@@ -16,7 +16,7 @@ export const POST: RequestHandler = ({ locals, params, url }) => {
 	const admin = requireResetTarget(locals, params.id);
 	const issued = issueResetLink(db, admin.id, params.id);
 	if (!issued) throw error(404, 'ユーザーが見つかりません。');
-	return json({ url: `${url.origin}/reset/${issued.token}`, expiresAt: issued.expiresAt });
+	return Response.json({ url: `${url.origin}/reset/${issued.token}`, expiresAt: issued.expiresAt });
 };
 
 /** 未使用のリセットリンクの取り消し。 */

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
-	import { formatDate } from '$lib/format';
+	import { refreshAll } from '$app/navigation';
+	import { formatDate } from '#lib/format.js';
 	import {
 		ApiError,
 		REAUTH_REQUIRED,
@@ -10,7 +10,7 @@
 		reauthenticate,
 		removeOwnPassword,
 		renamePasskey
-	} from '$lib/app/passkey';
+	} from '#lib/app/passkey.js';
 
 	interface Credentials {
 		hasPassword: boolean;
@@ -37,7 +37,7 @@
 		busy = true;
 		try {
 			await action();
-			await invalidateAll();
+			await refreshAll();
 			notice = done;
 			return true;
 		} catch (err) {

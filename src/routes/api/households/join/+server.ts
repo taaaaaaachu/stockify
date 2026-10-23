@@ -1,8 +1,8 @@
-import { json, error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { joinHouseholdByInvite } from '$lib/server/households';
-import { requireUser } from '$lib/server/apiGuard';
-import { setHouseholdCookie } from '$lib/server/sessionCookie';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.js';
+import { joinHouseholdByInvite } from '#lib/server/households.js';
+import { requireUser } from '#lib/server/apiGuard.js';
+import { setHouseholdCookie } from '#lib/server/sessionCookie.js';
 import type { RequestHandler } from './$types';
 
 const messages: Record<string, string> = {
@@ -21,5 +21,5 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
 	const result = joinHouseholdByInvite(db, user.id, code);
 	if (!result.ok) throw error(400, messages[result.error] ?? '招待コードを使用できません。');
 	setHouseholdCookie(cookies, result.householdId);
-	return json(result);
+	return Response.json(result);
 };

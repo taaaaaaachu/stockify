@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { store } from '$lib/app/store.svelte';
-	import { buildDashboard } from '$lib/domain/dashboard';
-	import { formatDepletion, formatQuantity } from '$lib/format';
-	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import RemainingBar from '$lib/components/RemainingBar.svelte';
-	import { productLinkLabel } from '$lib/productLinks';
+	import { store } from '#lib/app/store.svelte.js';
+	import { buildDashboard } from '#lib/domain/dashboard.js';
+	import { formatDepletion, formatQuantity } from '#lib/format.js';
+	import StatusBadge from '#lib/components/StatusBadge.svelte';
+	import RemainingBar from '#lib/components/RemainingBar.svelte';
+	import { productLinkLabel } from '#lib/productLinks.js';
 
 	const rows = $derived(buildDashboard(store.bundles, store.settings, store.now));
 </script>
@@ -13,7 +13,7 @@
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
 	<h1 style="margin:0; font-size:1.4rem;">在庫</h1>
 	<a
-		href={resolve('/items/new')}
+		href={resolve('items/new')}
 		style="background:var(--accent); color:#fff; text-decoration:none;
 		       padding:0.4rem 0.8rem; border-radius:0.5rem; font-size:0.9rem;"
 	>

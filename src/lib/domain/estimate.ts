@@ -1,4 +1,4 @@
-import type { Purchase, RanOutEvent, RemainingAdjustment, StockItem } from '$lib/types';
+import type { Purchase, RanOutEvent, RemainingAdjustment, StockItem } from '#lib/types.js';
 
 /** 1 日のミリ秒数。 */
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;

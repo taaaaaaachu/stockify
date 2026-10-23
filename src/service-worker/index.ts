@@ -1,17 +1,20 @@
-/// <reference types="@sveltejs/kit" />
-/// <reference lib="webworker" />
+import { self as sw } from '$app/service-worker';
+import { version } from '$app/env';
+import { immutable, assets } from '$app/manifest';
+import { asset } from '$app/paths';
+import { strategyFor } from '#lib/sw/strategy.js';
+import { MEMBER_DB_PREFIX } from '#lib/repo/member.js';
 
-import { build, files, version } from '$service-worker';
-import { strategyFor } from '$lib/sw/strategy';
-import { MEMBER_DB_PREFIX } from '$lib/repo/member';
-
-// 型のためのキャスト(Service Worker のグローバル)。
-const sw = self as unknown as ServiceWorkerGlobalScope;
 // 版ごとにキャッシュを分ける。古い HTML が消えた旧アセットを参照しないよう、ページも版ごと(ADR 0009)。
 const ASSET_CACHE = `stockify-assets-${version}`;
 const PAGE_CACHE = `stockify-pages-${version}`;
 const OFFLINE_URL = '/offline.html';
-const PRECACHED = new Set([...build, ...files]);
+// マニフェストのパスはベースパス相対なので、url.pathname と同じ形(先頭 / 付き)にそろえる。
+// ビルド成果物は SW 自身(ベースパス直下)からの相対で解決する。
+const PRECACHED = new Set([
+	...immutable.map((f) => new URL(f.path, sw.location.href).pathname),
+	...assets.map((f) => asset(f.path))
+]);
 
 interface PushPayload {
 	title?: string;

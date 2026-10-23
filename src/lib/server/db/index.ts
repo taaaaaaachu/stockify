@@ -2,7 +2,7 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { env } from '$env/dynamic/private';
+import { DATABASE_PATH } from '$app/env/private';
 import * as schema from './schema';
 
 export type Db = BetterSQLite3Database<typeof schema>;
@@ -22,7 +22,7 @@ export function createDb(dbPath: string): Db {
 let instance: Db | null = null;
 function resolveDb(): Db {
 	if (!instance) {
-		instance = createDb(env.DATABASE_PATH ?? './data/app.sqlite');
+		instance = createDb(DATABASE_PATH);
 	}
 	return instance;
 }

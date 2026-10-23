@@ -13,7 +13,7 @@ import {
 	type SendResult
 } from './push';
 import { pushSubscriptions } from './db/schema';
-import { MS_PER_DAY } from '$lib/domain/estimate';
+import { MS_PER_DAY } from '#lib/domain/estimate.js';
 
 let db: Db;
 let userId: string;

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildDashboard, buildRow, shoppingList } from './dashboard';
 import { MS_PER_DAY } from './estimate';
-import type { AppSettings, ItemBundle } from '$lib/repo/types';
-import type { Purchase, StockItem, Subscription } from '$lib/types';
+import type { AppSettings, ItemBundle } from '#lib/repo/types.js';
+import type { Purchase, StockItem, Subscription } from '#lib/types.js';
 
 const T0 = Date.UTC(2026, 0, 1);
 const day = (n: number) => T0 + n * MS_PER_DAY;

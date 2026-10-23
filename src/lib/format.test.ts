@@ -8,7 +8,7 @@ import {
 	localDateInput,
 	dateInputToTimestamp
 } from './format';
-import { MS_PER_DAY } from '$lib/domain/estimate';
+import { MS_PER_DAY } from '#lib/domain/estimate.js';
 
 describe('formatDate', () => {
 	it('ローカル日付を YYYY/MM/DD にする', () => {

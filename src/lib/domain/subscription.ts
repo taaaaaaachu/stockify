@@ -1,5 +1,5 @@
 import { MS_PER_DAY } from './estimate';
-import type { Subscription } from '$lib/types';
+import type { Subscription } from '#lib/types.js';
 
 /**
  * 一度の遅延生成でさかのぼって作る配送の上限。
