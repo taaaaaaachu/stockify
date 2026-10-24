@@ -9,6 +9,7 @@ import {
 	type RegistrationResponseJSON,
 	type AuthenticationResponseJSON
 } from '@simplewebauthn/server';
+import { COSEALG } from '@simplewebauthn/server/helpers';
 import { dev } from '$app/env';
 import type { Db } from './db';
 import type { PasskeyRow } from './db/schema';
@@ -21,6 +22,12 @@ import { getPasskey, recordPasskeyUse } from './credentials';
 
 const RP_NAME = 'Stockify';
 const CHALLENGE_TTL_MS = 1000 * 60 * 5;
+/**
+ * 受け付ける公開鍵アルゴリズム。ライブラリの既定(PQC 非対応の実行環境での値)を明示する。
+ * 省くと Node 24 では PQC 対応の判定で実験的な Web Crypto API を呼び、ExperimentalWarning が出る。
+ * 登録オプションと登録の検証で同じ値を使う。
+ */
+const SUPPORTED_ALGORITHM_IDS = [COSEALG.EdDSA, COSEALG.ES256, COSEALG.RS256];
 
 /**
  * 登録の待ち状態。signup = 未登録者の会員登録(世帯処理は確定時に registerUser で行う)、
@@ -106,7 +113,8 @@ export function registrationOptions(
 		attestationType: 'none',
 		excludeCredentials: exclude.map((c) => ({ id: c.id, transports: parseTransports(c.transports) })),
 		// ユーザー名なしログインのため端末に保存させる。パスワード代わりなので本人確認も必須。
-		authenticatorSelection: { residentKey: 'required', userVerification: 'required' }
+		authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+		supportedAlgorithmIDs: SUPPORTED_ALGORITHM_IDS
 	});
 }
 
@@ -122,7 +130,8 @@ export async function verifyRegistration(
 			expectedChallenge,
 			expectedOrigin: url.origin,
 			expectedRPID: url.hostname,
-			requireUserVerification: true
+			requireUserVerification: true,
+			supportedAlgorithmIDs: SUPPORTED_ALGORITHM_IDS
 		});
 		if (!v.verified) return null;
 		const { credential } = v.registrationInfo;
