@@ -48,7 +48,7 @@
 PowerShell で(プロジェクトフォルダ内):
 
 ```powershell
-npx web-push generate-vapid-keys
+pnpm exec web-push generate-vapid-keys
 ```
 
 出力の `Public Key` / `Private Key` を控えます。
@@ -89,7 +89,7 @@ NAS へは **`node_modules` などを除いて**コピーします(重い・不�
 以下を**含めない**で ZIP 化してください:
 
 - 含めない: `node_modules` / `.svelte-kit` / `build` / `data` / `.git`
-- 含める: それ以外すべて(**`.env` / `Dockerfile` / `docker-compose.yml` / `src` / `drizzle` / `scripts` / `static` / `package.json` / `package-lock.json` など**)
+- 含める: それ以外すべて(**`.env` / `Dockerfile` / `docker-compose.yml` / `src` / `drizzle` / `scripts` / `static` / `package.json` / `pnpm-lock.yaml` など**)
 
 PowerShell で作る例(必要フォルダだけ ZIP):
 

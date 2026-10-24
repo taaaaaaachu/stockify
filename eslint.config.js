@@ -17,7 +17,7 @@ export default ts.config(
 			'node_modules/',
 			'drizzle/',
 			'static/',
-			'package-lock.json'
+			'pnpm-lock.yaml'
 		]
 	},
 	js.configs.recommended,

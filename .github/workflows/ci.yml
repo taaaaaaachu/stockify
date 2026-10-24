@@ -15,22 +15,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # pnpm の版は package.json の packageManager から決まる。
+      - uses: pnpm/action-setup@v6
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
 
       # svelte-kit sync は prepare(postinstall)で走る。
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Lint (ESLint)
-        run: npm run lint
+        run: pnpm lint
 
       - name: 型チェック (svelte-check)
-        run: npm run check
+        run: pnpm check
 
       - name: テスト (vitest)
-        run: npm test
+        run: pnpm test
 
   # --- CD の前半: main のイメージをビルドして GHCR へ push ---
   # NAS への反映は Watchtower が pull で行うので、ここはレジストリ配布まで。

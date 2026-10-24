@@ -172,7 +172,7 @@ Cloudflare Tunnel も同様に NAS 全体で 1 コンテナだけを起動する
   ビルドが `/root/.docker/config.json` を使っていない。先に SSH で pull しておくか、
   CM の「レジストリ」設定に GHCR 認証を登録する。
 - **CI の test が落ちる**: `better-sqlite3` を使うサーバーテストがある。ローカル再現は
-  `npm ci && npm test`。
+  `pnpm install --frozen-lockfile && pnpm test`。
 - **build-push が `Cache export is not supported for the docker driver`**: ワークフローに
   `docker/setup-buildx-action` があるか確認(gha キャッシュには docker-container ドライバが必要)。
 - **マイグレーションが当たっていない**: app コンテナのログ(`docker compose logs app`)で

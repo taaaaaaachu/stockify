@@ -7,16 +7,19 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	python3 make g++ && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
-RUN npm ci
+# pnpm は package.json の packageManager に書いた版を corepack で使う。
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 # 公開オリジンをビルドに焼き込むときだけ渡す(ローカル compose 用。本番の CI では渡さない)。
 ARG ORIGIN
-RUN ORIGIN=$ORIGIN npm run build
+RUN ORIGIN=$ORIGIN pnpm build
 
 # 本番用に devDependencies を落とす(ネイティブモジュールは残る)。
-RUN npm prune --omit=dev
+RUN pnpm prune --prod
 
 # --- 実行ステージ ---
 FROM node:24-trixie-slim

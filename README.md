@@ -83,7 +83,7 @@
 ## テスト
 
 ```bash
-npm test        # vitest run
+pnpm test        # vitest run
 ```
 
 25 ファイル・220 件のテストがすべて通ることを確認している。主な対象は次のとおり。
@@ -92,22 +92,22 @@ npm test        # vitest run
 - **サーバー**(`src/lib/server`): 認証とセッション、認証試行制限、認証情報の追加・削除、パスキーの登録・認証(往復テストを含む)、世帯とロールの権限、入力検証、在庫操作、プッシュ通知の評価
 - **クライアント**: IndexedDB リポジトリ(fake-indexeddb)、会員用リポジトリと同期、Service Worker のキャッシュ戦略、RBAC 判定
 
-CI(`.github/workflows/ci.yml`)では main への push と全 PR で ESLint(`npm run lint`)、svelte-check(`npm run check`)、Vitest(`npm test`)を実行する。
+CI(`.github/workflows/ci.yml`)では main への push と全 PR で ESLint(`pnpm lint`)、svelte-check(`pnpm check`)、Vitest(`pnpm test`)を実行する。
 
 ## ローカルでの起動方法
 
 Node.js 22.17 以上が必要(SvelteKit 3 の要件)。CI と Docker イメージは Node.js 24 系(Active LTS)の最新を使っている。
 
 ```bash
-npm ci
+pnpm install
 cp .env.example .env   # 任意。DATABASE_PATH の既定は ./data/app.sqlite
-npm run db:migrate     # SQLite にマイグレーションを適用
-npm run dev            # http://localhost:5173
+pnpm db:migrate     # SQLite にマイグレーションを適用
+pnpm dev            # http://localhost:5173
 ```
 
 - 最初に `/register` で登録したユーザーは招待コードなしでインスタンス管理者になり、最初の世帯が作られる。
-- プッシュ通知を試す場合は `.env` に `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`(`npx web-push generate-vapid-keys` で生成)と `CRON_SECRET` を設定する。未設定なら通知機能は無効になる。
-- そのほかのコマンド: `npm run check`(型チェック)、`npm run lint`、`npm run db:generate`(スキーマ変更後のマイグレーション生成)。
+- プッシュ通知を試す場合は `.env` に `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`(`pnpm exec web-push generate-vapid-keys` で生成)と `CRON_SECRET` を設定する。未設定なら通知機能は無効になる。
+- そのほかのコマンド: `pnpm check`(型チェック)、`pnpm lint`、`pnpm db:generate`(スキーマ変更後のマイグレーション生成)。
 - Docker で本番相当のコンテナを動かす場合は `docker compose -f docker-compose.local.yml up --build`(`http://localhost:3000`)。
 
 ## デプロイ

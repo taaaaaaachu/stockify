@@ -2,9 +2,9 @@
 
 ## 開発ツールの実行
 
-- Node.js/npm などの mise 管理ツールを使うときは、プロジェクトで利用するランタイムを明示し、PowerShell では `--command` 形式で実行する。
-- 例: `mise exec node@24.13.1 --command "npm test"`
-- `mise exec -- npm test` はこの環境の mise / PowerShell ではコマンドとして解釈されないため使用しない。
+- Node.js/pnpm などの mise 管理ツールを使うときは、プロジェクトで利用するランタイムを明示し、PowerShell では `--command` 形式で実行する。
+- 例: `mise exec node@24.13.1 --command "pnpm test"`
+- `mise exec -- pnpm test` はこの環境の mise / PowerShell ではコマンドとして解釈されないため使用しない。
 
 ## Git 操作
 
