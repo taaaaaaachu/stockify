@@ -1,5 +1,5 @@
 # --- ビルドステージ ---
-FROM node:22-bookworm-slim AS build
+FROM node:24-trixie-slim AS build
 WORKDIR /app
 
 # better-sqlite3 / @node-rs/argon2 のネイティブビルドに備えて toolchain を入れる
@@ -19,7 +19,7 @@ RUN ORIGIN=$ORIGIN npm run build
 RUN npm prune --omit=dev
 
 # --- 実行ステージ ---
-FROM node:22-bookworm-slim
+FROM node:24-trixie-slim
 WORKDIR /app
 ENV NODE_ENV=production
 ENV DATABASE_PATH=/data/app.sqlite
