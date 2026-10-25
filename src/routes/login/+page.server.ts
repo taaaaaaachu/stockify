@@ -4,15 +4,18 @@ import { setSessionCookie, setHouseholdCookie } from '#lib/server/sessionCookie.
 import { db } from '#lib/server/db/index.js';
 import { listUserHouseholds } from '#lib/server/households.js';
 import type { Actions, PageServerLoad } from './$types';
+import { safeNext } from '#lib/safeNext.js';
 import { isAuthRateLimited, recordAuthFailure, resetUserAuthRateLimit } from '#lib/server/authRateLimit.js';
 
 export const load: PageServerLoad = ({ locals, url }) => {
-	if (locals.user) throw redirect(303, '/');
-	return { deleted: url.searchParams.get('deleted') === '1' };
+	// next: ログイン後の戻り先(OAuth の同意画面など)。
+	const next = safeNext(url.searchParams.get('next'));
+	if (locals.user) throw redirect(303, next);
+	return { deleted: url.searchParams.get('deleted') === '1', next };
 };
 
 export const actions: Actions = {
-	default: async ({ request, cookies, getClientAddress }) => {
+	default: async ({ request, cookies, getClientAddress, url }) => {
 		const data = await request.formData();
 		const username = String(data.get('username') ?? '');
 		const password = String(data.get('password') ?? '');
@@ -32,6 +35,6 @@ export const actions: Actions = {
 		// 先頭の世帯をアクティブにしておく。
 		const households = listUserHouseholds(db, user.id);
 		if (households[0]) setHouseholdCookie(cookies, households[0].id);
-		throw redirect(303, user.mustChangePassword ? '/account?password=required' : '/');
+		throw redirect(303, user.mustChangePassword ? '/account?password=required' : safeNext(url.searchParams.get('next')));
 	}
 };

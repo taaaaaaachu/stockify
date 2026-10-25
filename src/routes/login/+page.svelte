@@ -13,7 +13,9 @@
 	async function passkeyLogin(useBrowserAutofill: boolean) {
 		try {
 			await loginWithPasskey(useBrowserAutofill);
-			await goto(resolve('/'), { refreshAll: true });
+			// 戻り先(OAuth の同意画面など)はアプリ内のルートとは限らないので、ページごと読み込む。
+			if (data.next === '/') await goto(resolve('/'), { refreshAll: true });
+			else location.assign(data.next);
 		} catch (err) {
 			if (isPasskeyCancel(err)) return;
 			passkeyError = err instanceof Error ? err.message : 'パスキーでログインできませんでした。';
