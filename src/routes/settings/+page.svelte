@@ -3,6 +3,7 @@
 	import { refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { normalizeNotifyMinute } from '#lib/notify-time.js';
+	import { canManageMembers } from '#lib/rbac.js';
 	import { store } from '#lib/app/store.svelte.js';
 	import {
 		pushSupported,
@@ -15,6 +16,8 @@
 	let { data } = $props();
 
 	let leadTime = $state('');
+	// 世帯設定は owner だけが変更できる。ゲストは世帯を持たないので常に変更できる。
+	const canEditSettings = $derived(!data.activeHousehold || canManageMembers(data.activeHousehold.role));
 	let saved = $state(false);
 
 	// 世帯ごとの通知ON/OFF。表示はサーバーデータ由来、保存後は refreshAll で再取得する。
@@ -130,13 +133,14 @@
 	<form onsubmit={save} style="display:flex; flex-direction:column; gap:0.9rem; max-width:20rem;">
 		<label style="display:flex; flex-direction:column; gap:0.25rem;">
 			<span>リードタイム既定値(日)</span>
-			<input bind:value={leadTime} type="number" step="any" min="0" />
+			<input bind:value={leadTime} type="number" step="any" min="0" disabled={!canEditSettings} />
 			<small style="color:var(--muted);"
-				>購入推奨日 = 枯渇予想日 − この日数。品目ごとに上書きできます。</small
+				>購入推奨日 = 枯渇予想日 − この日数。品目ごとに上書きできます。{#if !canEditSettings}世帯の owner だけが変更できます。{/if}</small
 			>
 		</label>
 		<button
 			type="submit"
+			disabled={!canEditSettings}
 			style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem;
 			       padding:0.5rem; cursor:pointer;"
 		>
