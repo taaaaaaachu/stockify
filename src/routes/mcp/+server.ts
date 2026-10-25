@@ -2,6 +2,7 @@ import { createMcpHandler } from '@modelcontextprotocol/server';
 import { db } from '#lib/server/db/index.js';
 import { authenticateAgent, type AgentContext } from '#lib/server/agentConnections.js';
 import { createMcpServer } from '#lib/server/mcp.js';
+import { publicOrigin } from '#lib/server/origin.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -12,7 +13,7 @@ const handler = createMcpHandler(({ authInfo }) => createMcpServer(db, authInfo?
 
 /** 401 で認可サーバーの在処を知らせる(RFC 9728)。 */
 function unauthorized(url: URL): Response {
-	const metadata = `${url.origin}/.well-known/oauth-protected-resource/mcp`;
+	const metadata = `${publicOrigin(url)}/.well-known/oauth-protected-resource/mcp`;
 	return Response.json(
 		{ error: 'invalid_token', error_description: 'エージェント接続のトークンが必要です。' },
 		{ status: 401, headers: { 'www-authenticate': `Bearer resource_metadata="${metadata}"` } }

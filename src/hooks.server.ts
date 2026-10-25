@@ -6,6 +6,7 @@ import { db } from '#lib/server/db/index.js';
 import { listUserHouseholds } from '#lib/server/households.js';
 import { allowedDuringForcedChange } from '#lib/server/apiGuard.js';
 import { csrfForbiddenResponse, isCsrfForbidden } from '#lib/server/csrf.js';
+import { publicOrigin } from '#lib/server/origin.js';
 import { dev } from '$app/env';
 
 function cookieOpts(expires: Date) {
@@ -14,7 +15,7 @@ function cookieOpts(expires: Date) {
 
 export const handle: Handle = async ({ event, resolve }) => {
 	// SvelteKit 組み込みの CSRF 判定の代わり(開発中は行わないのも同じ)。
-	if (!dev && isCsrfForbidden(event.request, event.url, __PATHS_ORIGIN__ || event.url.origin)) {
+	if (!dev && isCsrfForbidden(event.request, event.url, publicOrigin(event.url))) {
 		return csrfForbiddenResponse(event.request);
 	}
 

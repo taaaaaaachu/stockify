@@ -3,6 +3,7 @@ import { db } from '#lib/server/db/index.js';
 import { listHouseholdInvites, listHouseholdMembers, listPendingOwnershipTransfers, listHouseholdSummaries } from '#lib/server/households.js';
 import { getCredentialSummary } from '#lib/server/credentials.js';
 import { listAgentConnections } from '#lib/server/agentConnections.js';
+import { mcpResource } from '#lib/server/origin.js';
 import { canManageInvites, canManageMembers } from '#lib/rbac.js';
 import type { PageServerLoad } from './$types';
 
@@ -17,7 +18,7 @@ export const load: PageServerLoad = ({ locals, url }) => {
 	return {
 		credentials: getCredentialSummary(db, locals.user.id),
 		agentConnections: forced ? [] : listAgentConnections(db, locals.user.id),
-		mcpUrl: `${url.origin}/mcp`,
+		mcpUrl: mcpResource(url),
 		canManageInvites: canManageInvitesForActive,
 		canManageMembers: canManageMembersForActive,
 		invites: canManageInvitesForActive && active ? listHouseholdInvites(db, active.id) : [],
