@@ -8,7 +8,7 @@
 		id: string;
 		name: string;
 		householdName: string;
-		clientId: string | null;
+		origin: string;
 		createdAt: number;
 		lastUsedAt: number;
 	}
@@ -35,16 +35,6 @@
 	$effect(() => {
 		if (!householdId && households.length > 0) householdId = households[0].id;
 	});
-
-	/** OAuth で作った接続はクライアントのドメインで見分ける(名前は自己申告なので)。 */
-	function origin(c: Connection): string {
-		if (!c.clientId) return '手動発行';
-		try {
-			return new URL(c.clientId).host;
-		} catch {
-			return c.clientId;
-		}
-	}
 
 	async function issue() {
 		errorMessage = '';
@@ -104,7 +94,7 @@
 				<li style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
 					<span style="display:flex; flex-direction:column;">
 						<span>{c.name} <span style="color:var(--muted); font-size:0.85rem;">→ {c.householdName}</span></span>
-						<span style="font-size:0.75rem; color:var(--muted);">{origin(c)} ・ 作成 {formatDate(c.createdAt)} ・ 最終使用 {formatDate(c.lastUsedAt)}</span>
+						<span style="font-size:0.75rem; color:var(--muted);">{c.origin} ・ 作成 {formatDate(c.createdAt)} ・ 最終使用 {formatDate(c.lastUsedAt)}</span>
 					</span>
 					<button
 						type="button"

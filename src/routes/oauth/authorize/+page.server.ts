@@ -16,7 +16,7 @@ async function check(url: URL) {
 	const parsed = parseAuthorizeRequest(url.searchParams, mcpResource(url));
 	if ('fatal' in parsed) return { error: parsed.fatal } as const;
 	const clientId = url.searchParams.get('client_id') ?? '';
-	const client = await resolveClient(clientId);
+	const client = await resolveClient(db, clientId);
 	if (typeof client === 'string') return { error: client } as const;
 	const redirectUri = 'ok' in parsed ? parsed.ok.redirectUri : parsed.request.redirectUri;
 	if (!isRegisteredRedirectUri(client.redirectUris, redirectUri))
@@ -37,7 +37,13 @@ export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
 	const { client, request } = checked;
 	const credentials = getCredentialSummary(db, locals.user.id);
 	return {
-		client: { name: client.clientName, host: new URL(client.clientId).host, redirectHost: new URL(request.redirectUri).host },
+		client: {
+			name: client.clientName,
+			// DCR の client_id はドメインを持たないので、身元として出せるのは戻り先のドメインだけ。
+			host: client.kind === 'cimd' ? new URL(client.clientId).host : new URL(request.redirectUri).host,
+			kind: client.kind,
+			redirectHost: new URL(request.redirectUri).host
+		},
 		households: locals.households.map((h) => ({ id: h.id, name: h.name })),
 		hasPassword: credentials.hasPassword,
 		hasPasskey: credentials.passkeys.length > 0,
@@ -56,7 +62,7 @@ export const actions: Actions = {
 		const householdId = String(form.get('householdId') ?? '');
 		if (!locals.households.some((h) => h.id === householdId)) return fail(400, { error: '世帯を選んでください。' });
 		const { client, request: req } = checked;
-		const name = normalizeAgentName(form.get('name')) ?? normalizeAgentName(client.clientName) ?? new URL(client.clientId).host;
+		const name = normalizeAgentName(form.get('name')) ?? normalizeAgentName(client.clientName) ?? new URL(client.kind === 'cimd' ? client.clientId : req.redirectUri).host;
 		const code = issueAuthorizationCode({
 			clientId: client.clientId,
 			redirectUri: req.redirectUri,

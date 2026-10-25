@@ -1,7 +1,7 @@
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Db } from './db';
-import { agentConnections, households, memberships, users } from './db/schema';
+import { agentConnections, households, memberships, oauthClients, users } from './db/schema';
 import type { HouseholdRole } from '#lib/rbac.js';
 
 /**
@@ -172,8 +172,16 @@ export interface AgentConnectionSummary {
 	householdId: string;
 	householdName: string;
 	clientId: string | null;
+	/** 一覧での見分け方。手動発行・CIMD のドメイン・DCR の戻り先のドメイン。 */
+	origin: string;
 	createdAt: number;
 	lastUsedAt: number;
+}
+
+function originOf(clientId: string | null, dcrRedirectUris: string | null): string {
+	if (!clientId) return '手動発行';
+	const url = dcrRedirectUris ? (JSON.parse(dcrRedirectUris) as string[])[0] : clientId;
+	return URL.canParse(url) ? new URL(url).host + (dcrRedirectUris ? '(自己登録)' : '') : clientId;
 }
 
 /** 会員の接続一覧(新しい順)。失効したものは消してから返す。 */
@@ -185,17 +193,22 @@ export function listAgentConnections(db: Db, userId: string, now = Date.now()): 
 			householdId: households.id,
 			householdName: households.name,
 			clientId: agentConnections.clientId,
+			dcrRedirectUris: oauthClients.redirectUris,
 			createdAt: agentConnections.createdAt,
 			lastUsedAt: agentConnections.lastUsedAt
 		})
 		.from(agentConnections)
 		.innerJoin(memberships, eq(agentConnections.membershipId, memberships.id))
 		.innerJoin(households, eq(memberships.householdId, households.id))
+		.leftJoin(oauthClients, eq(agentConnections.clientId, oauthClients.id))
 		.where(eq(memberships.userId, userId))
 		.all();
 	const idle = rows.filter((r) => isIdle(r.lastUsedAt, now)).map((r) => r.id);
 	if (idle.length > 0) db.delete(agentConnections).where(inArray(agentConnections.id, idle)).run();
-	return rows.filter((r) => !idle.includes(r.id)).sort((a, b) => b.createdAt - a.createdAt);
+	return rows
+		.filter((r) => !idle.includes(r.id))
+		.sort((a, b) => b.createdAt - a.createdAt)
+		.map(({ dcrRedirectUris, ...r }) => ({ ...r, origin: originOf(r.clientId, dcrRedirectUris) }));
 }
 
 /** 自分の接続を取り消す。見つからなければ false。 */

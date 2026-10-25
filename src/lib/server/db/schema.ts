@@ -144,6 +144,18 @@ export const agentConnections = sqliteTable(
 	(t) => [index('agent_connections_membership_idx').on(t.membershipId)]
 );
 
+/**
+ * Dynamic Client Registration(RFC 7591)で登録された OAuth クライアント(ADR 0012)。
+ * CIMD のクライアントは URL が client_id なのでここには入らない。すべて公開クライアント。
+ */
+export const oauthClients = sqliteTable('oauth_clients', {
+	id: text('id').primaryKey(),
+	clientName: text('client_name'),
+	/** 登録された戻り先(JSON 配列)。 */
+	redirectUris: text('redirect_uris').notNull(),
+	createdAt: integer('created_at').notNull()
+});
+
 /** owner交代の保留申請。世帯ごとに保留は1件だけ。 */
 export const ownershipTransfers = sqliteTable(
 	'ownership_transfers',

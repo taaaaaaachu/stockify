@@ -40,13 +40,14 @@
 	{:else if data.client}
 		<h1 style="font-size:1.2rem; margin:0 0 0.6rem;">エージェント接続の許可</h1>
 		<p style="margin:0 0 0.3rem; font-size:1.3rem;"><b>{data.client.host}</b></p>
+		{#if data.client.kind === 'dcr'}<p style="margin:0 0 0.3rem; font-size:0.8rem; color:var(--muted);">(許可後の戻り先のドメイン。このクライアントは自己登録のため、ドメインで身元を確かめられません)</p>{/if}
 		{#if data.client.name}<p style="margin:0 0 0.6rem; color:var(--muted);">「{data.client.name}」と名乗っています</p>{/if}
 		<p style="font-size:0.9rem; margin:0 0 0.8rem;">
 			このエージェントに、選んだ世帯の在庫(品目・購入・使い切り・残量補正・定期便・商品リンク)の閲覧と変更を許可します。
 			世帯の owner なら、リードタイムの既定値も変更できます。世帯のメンバーや招待、アカウントには触れられません。
 		</p>
 		<p style="font-size:0.85rem; color:var(--warn); margin:0 0 0.8rem;">
-			心当たりのないドメイン({data.client.host})なら許可しないでください。許可後の戻り先は {data.client.redirectHost} です。
+			心当たりのないドメイン({data.client.host})なら許可しないでください。{#if data.client.kind === 'cimd'}許可後の戻り先は {data.client.redirectHost} です。{/if}
 		</p>
 
 		{#if data.households.length === 0}

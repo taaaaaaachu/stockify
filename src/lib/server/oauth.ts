@@ -2,10 +2,13 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP } from 'node:net';
+import { and, eq, lt, notInArray, isNotNull } from 'drizzle-orm';
+import type { Db } from './db';
+import { agentConnections, oauthClients } from './db/schema';
 
 /**
- * 自前の OAuth 2.1 認可サーバー(ADR 0012)。クライアントは Client ID Metadata Document(CIMD)だけで受け付け、
- * 公開クライアント(PKCE S256、クライアント認証なし)として扱う。
+ * 自前の OAuth 2.1 認可サーバー(ADR 0012)。クライアントは Client ID Metadata Document(CIMD)か
+ * Dynamic Client Registration(DCR)で受け付け、どちらも公開クライアント(PKCE S256、クライアント認証なし)として扱う。
  */
 
 // --- クライアント(CIMD) ---
@@ -14,6 +17,8 @@ export interface ClientMetadata {
 	clientId: string;
 	clientName: string | null;
 	redirectUris: string[];
+	/** cimd: client_id の URL のドメインが身元。dcr: 自己申告だけで、身元は戻り先のドメインしかない。 */
+	kind: 'cimd' | 'dcr';
 }
 
 /** client_id として受け付ける URL か。https でパスを持ち、資格情報・フラグメント・ドットセグメントを含まない。 */
@@ -40,7 +45,7 @@ export function validateClientMetadata(clientId: string, doc: unknown): ClientMe
 	const method = d.token_endpoint_auth_method;
 	if (method !== undefined && method !== 'none') return '公開クライアント(token_endpoint_auth_method: none)だけに対応しています。';
 	const name = typeof d.client_name === 'string' && d.client_name.trim() ? d.client_name.trim().slice(0, 100) : null;
-	return { clientId, clientName: name, redirectUris: uris as string[] };
+	return { clientId, clientName: name, redirectUris: uris as string[], kind: 'cimd' };
 }
 
 /**
@@ -160,8 +165,12 @@ export function cacheMsOf(cacheControl: string | undefined): number {
 // ponytail: 単一プロセス前提のメモリキャッシュ。複数台で動かすなら共有キャッシュへ。
 const metadataCache = new Map<string, { metadata: ClientMetadata; expiresAt: number }>();
 
-/** クライアントの情報を取得して検証する。失敗なら理由の文字列。 */
-export async function resolveClient(clientId: string, fetchJson: FetchJson = httpsGetJson, now = Date.now()): Promise<ClientMetadata | string> {
+/**
+ * クライアントの情報を得る。DCR で登録した client_id なら DB から、それ以外は CIMD として取得して検証する。
+ * 失敗なら理由の文字列。
+ */
+export async function resolveClient(db: Db, clientId: string, fetchJson: FetchJson = httpsGetJson, now = Date.now()): Promise<ClientMetadata | string> {
+	if (clientId.startsWith(DCR_PREFIX)) return findRegisteredClient(db, clientId) ?? '登録されていないクライアントです。登録し直してください。';
 	const url = parseClientIdUrl(clientId);
 	if (!url) return 'client_id は https の URL(パス付き)で指定してください。';
 	const cached = metadataCache.get(clientId);
@@ -179,6 +188,56 @@ export async function resolveClient(clientId: string, fetchJson: FetchJson = htt
 
 export function clearClientCache(): void {
 	metadataCache.clear();
+}
+
+// --- クライアント(DCR) ---
+
+const DCR_PREFIX = 'dcr_';
+const MAX_REDIRECT_URIS = 10;
+/** 接続に一度も使われないまま、この期間を過ぎた登録は消す。 */
+export const UNUSED_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * 登録リクエスト(RFC 7591)を検証する。戻り先は https か、ループバックの http だけ。
+ * 認証方式は何を求められても none(公開クライアント)で登録する(RFC 7591 はサーバーが値を置き換えることを認めている)。
+ */
+export function validateRegistration(body: unknown): { clientName: string | null; redirectUris: string[] } | { error: string; description: string } {
+	const bad = (error: string, description: string) => ({ error, description });
+	if (typeof body !== 'object' || body === null) return bad('invalid_client_metadata', 'JSON オブジェクトで送ってください。');
+	const b = body as Record<string, unknown>;
+	const uris = b.redirect_uris;
+	if (!Array.isArray(uris) || uris.length === 0 || uris.length > MAX_REDIRECT_URIS)
+		return bad('invalid_redirect_uri', `redirect_uris は1〜${MAX_REDIRECT_URIS}件で指定してください。`);
+	for (const u of uris) {
+		if (typeof u !== 'string' || u.length > 2048 || !URL.canParse(u) || u.includes('#'))
+			return bad('invalid_redirect_uri', 'redirect_uris に不正な URL があります。');
+		const url = new URL(u);
+		if (url.protocol !== 'https:' && !isLoopback(url)) return bad('invalid_redirect_uri', 'redirect_uris は https か、ループバックの http だけです。');
+	}
+	const grants = b.grant_types;
+	if (grants !== undefined && (!Array.isArray(grants) || !grants.includes('authorization_code') || grants.some((g) => g !== 'authorization_code' && g !== 'refresh_token')))
+		return bad('invalid_client_metadata', 'grant_types は authorization_code と refresh_token だけです。');
+	const responses = b.response_types;
+	if (responses !== undefined && (!Array.isArray(responses) || responses.some((r) => r !== 'code')))
+		return bad('invalid_client_metadata', 'response_types は code だけです。');
+	const name = typeof b.client_name === 'string' && b.client_name.trim() ? b.client_name.trim().slice(0, 100) : null;
+	return { clientName: name, redirectUris: uris as string[] };
+}
+
+/** クライアントを登録する。ついでに、使われないまま古くなった登録を消す(誰でも登録できるので溜めない)。 */
+export function registerClient(db: Db, input: { clientName: string | null; redirectUris: string[] }, now = Date.now()): ClientMetadata {
+	const used = db.select({ id: agentConnections.clientId }).from(agentConnections).where(isNotNull(agentConnections.clientId));
+	db.delete(oauthClients)
+		.where(and(lt(oauthClients.createdAt, now - UNUSED_CLIENT_TTL_MS), notInArray(oauthClients.id, used)))
+		.run();
+	const clientId = DCR_PREFIX + randomBytes(16).toString('base64url');
+	db.insert(oauthClients).values({ id: clientId, clientName: input.clientName, redirectUris: JSON.stringify(input.redirectUris), createdAt: now }).run();
+	return { clientId, clientName: input.clientName, redirectUris: input.redirectUris, kind: 'dcr' };
+}
+
+export function findRegisteredClient(db: Db, clientId: string): ClientMetadata | null {
+	const row = db.select().from(oauthClients).where(eq(oauthClients.id, clientId)).get();
+	return row ? { clientId: row.id, clientName: row.clientName, redirectUris: JSON.parse(row.redirectUris) as string[], kind: 'dcr' } : null;
 }
 
 // --- 認可コード ---

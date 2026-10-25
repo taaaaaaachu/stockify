@@ -18,8 +18,13 @@ vi.mock('#lib/server/oauth.js', async (orig) => {
 	const mod = await orig<typeof import('#lib/server/oauth.js')>();
 	return {
 		...mod,
-		resolveClient: async (clientId: string) =>
-			clientId === CLIENT ? { clientId, clientName: 'muse', redirectUris: [REDIRECT] } : 'クライアントの情報を取得できませんでした。'
+		// DCR は DB を引く本物を使い、CIMD の取得だけ差し替える。
+		resolveClient: async (db: Db, clientId: string) =>
+			clientId.startsWith('dcr_')
+				? mod.resolveClient(db, clientId)
+				: clientId === CLIENT
+					? { clientId, clientName: 'muse', redirectUris: [REDIRECT], kind: 'cimd' }
+					: 'クライアントの情報を取得できませんでした。'
 	};
 });
 
@@ -32,6 +37,7 @@ const CHALLENGE = createHash('sha256').update(VERIFIER).digest('base64url');
 const { load, actions } = await import('./authorize/+page.server');
 const { POST: token } = await import('./token/+server');
 const { POST: revoke } = await import('./revoke/+server');
+const { POST: register } = await import('./register/+server');
 
 let now: number;
 
@@ -166,5 +172,40 @@ describe('許可からトークンまで', () => {
 	it('未対応の grant_type や client_id なしは 400', async () => {
 		expect(await exchange({ grant_type: 'client_credentials', client_id: CLIENT })).toMatchObject({ status: 400, body: { error: 'unsupported_grant_type' } });
 		expect(await exchange({ grant_type: 'refresh_token', refresh_token: 'x' })).toMatchObject({ status: 400, body: { error: 'invalid_request' } });
+	});
+});
+
+describe('DCR', () => {
+	async function registerMuse(body: unknown) {
+		const res = (await call(register, { request: new Request(`${ORIGIN}/oauth/register`, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }) })) as Response;
+		return { status: res.status, body: await res.json() };
+	}
+
+	it('登録した client_id で同意からトークンまで通り、一覧では戻り先のドメインで見分ける', async () => {
+		const reg = await registerMuse({ client_name: 'muse', redirect_uris: ['https://app.muse.example/cb'], token_endpoint_auth_method: 'client_secret_post' });
+		expect(reg.status).toBe(201);
+		expect(reg.body).toMatchObject({ client_name: 'muse', token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'] });
+		const clientId = reg.body.client_id as string;
+
+		const headers: Record<string, string> = {};
+		const page = await run(() => call(load, { url: authorizeUrl({ client_id: clientId, redirect_uri: 'https://app.muse.example/cb' }), locals: locals(), setHeaders: (h: Record<string, string>) => Object.assign(headers, h) }));
+		expect('result' in page && page.result).toMatchObject({ client: { host: 'app.muse.example', kind: 'dcr', name: 'muse' } });
+
+		const r = await allow(authorizeUrl({ client_id: clientId, redirect_uri: 'https://app.muse.example/cb' }));
+		const code = 'location' in r ? r.location.searchParams.get('code')! : '';
+		const t = await exchange({ grant_type: 'authorization_code', code, redirect_uri: 'https://app.muse.example/cb', client_id: clientId, code_verifier: VERIFIER });
+		expect(t.status).toBe(200);
+		expect(authenticateAgent(state.db, t.body.access_token)).toMatchObject({ householdId: 'h1' });
+		expect(listAgentConnections(state.db, 'u')[0].origin).toBe('app.muse.example(自己登録)');
+	});
+
+	it('登録していない戻り先には返さない', async () => {
+		const { body } = await registerMuse({ redirect_uris: ['https://app.muse.example/cb'] });
+		const r = await run(() => call(load, { url: authorizeUrl({ client_id: body.client_id, redirect_uri: 'https://evil.example/cb' }), locals: locals(), setHeaders: () => {} }));
+		expect('result' in r && (r.result as { error: string }).error).toContain('登録されていません');
+	});
+
+	it('不正な登録は 400', async () => {
+		expect(await registerMuse({ redirect_uris: ['http://app.muse.example/cb'] })).toMatchObject({ status: 400, body: { error: 'invalid_redirect_uri' } });
 	});
 });
