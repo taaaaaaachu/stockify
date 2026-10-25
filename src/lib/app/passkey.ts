@@ -100,3 +100,16 @@ export async function withPasskeyReauth<T>(action: () => Promise<T>): Promise<T>
 export function isPasskeyCancel(err: unknown): boolean {
 	return err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'AbortError');
 }
+
+/**
+ * 本人確認に失敗したときに見せる説明。別の操作に置き換わった中断(AbortError)だけは黙る。
+ * NotAllowedError はユーザーの取り消しのほか、ブラウザが確認画面を出さずに拒んだ場合も同じ名前になる。
+ * 区別できないので、黙らずにブラウザの説明も添えて見せる(押しても何も起きないように見えるのを防ぐ)。
+ */
+export function reauthErrorMessage(err: unknown): string | null {
+	if (!(err instanceof Error)) return '本人確認できませんでした。';
+	if (err.name === 'AbortError') return null;
+	if (err.name === 'NotAllowedError')
+		return `パスキーで確認できませんでした。取り消した場合や、この端末で使えるパスキーがない場合などです。もう一度試すか、パスワードで確認してください。(${err.message})`;
+	return err.message;
+}

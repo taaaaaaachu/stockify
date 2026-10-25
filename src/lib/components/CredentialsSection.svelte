@@ -9,7 +9,8 @@
 		isPasskeyCancel,
 		reauthenticate,
 		removeOwnPassword,
-		renamePasskey
+		renamePasskey,
+		reauthErrorMessage
 	} from '#lib/app/passkey.js';
 
 	interface Credentials {
@@ -57,7 +58,7 @@
 		try {
 			await reauthenticate(password);
 		} catch (err) {
-			if (!isPasskeyCancel(err)) errorMessage = err instanceof Error ? err.message : '本人確認できませんでした。';
+			errorMessage = reauthErrorMessage(err) ?? errorMessage;
 			return;
 		} finally {
 			busy = false;

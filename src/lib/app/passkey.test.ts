@@ -5,7 +5,7 @@ vi.mock('@simplewebauthn/browser', () => ({
 	startRegistration: vi.fn()
 }));
 
-import { api, ApiError, isPasskeyCancel, withPasskeyReauth } from './passkey';
+import { api, ApiError, isPasskeyCancel, reauthErrorMessage, withPasskeyReauth } from './passkey';
 
 const reply = (status: number, body: unknown = {}) =>
 	new Response(status === 204 ? null : JSON.stringify(body), { status });
@@ -55,5 +55,24 @@ describe('isPasskeyCancel', () => {
 		expect(isPasskeyCancel(Object.assign(new Error(), { name: 'NotAllowedError' }))).toBe(true);
 		expect(isPasskeyCancel(Object.assign(new Error(), { name: 'AbortError' }))).toBe(true);
 		expect(isPasskeyCancel(new ApiError('x', 400))).toBe(false);
+	});
+});
+
+describe('reauthErrorMessage', () => {
+	const named = (name: string, message = 'm') => Object.assign(new Error(message), { name });
+
+	it('別の操作に置き換わった中断だけは黙る', () => {
+		expect(reauthErrorMessage(named('AbortError'))).toBeNull();
+	});
+
+	it('NotAllowedError は黙らず、ブラウザの説明も添える', () => {
+		const m = reauthErrorMessage(named('NotAllowedError', 'The document is not focused.'));
+		expect(m).toContain('パスキーで確認できませんでした');
+		expect(m).toContain('The document is not focused.');
+	});
+
+	it('それ以外はエラーの説明をそのまま見せる', () => {
+		expect(reauthErrorMessage(new ApiError('パスワードが違います。', 401))).toBe('パスワードが違います。');
+		expect(reauthErrorMessage('x')).toBe('本人確認できませんでした。');
 	});
 });

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { isPasskeyCancel, reauthenticate } from '#lib/app/passkey.js';
+	import { reauthenticate, reauthErrorMessage } from '#lib/app/passkey.js';
 	import ReauthPrompt from '#lib/components/ReauthPrompt.svelte';
 
 	let { data, form } = $props();
@@ -23,7 +23,7 @@
 			await reauthenticate(password);
 			reauthed = true;
 		} catch (err) {
-			if (!isPasskeyCancel(err)) reauthError = err instanceof Error ? err.message : '本人確認できませんでした。';
+			reauthError = reauthErrorMessage(err) ?? reauthError;
 		} finally {
 			busy = false;
 		}

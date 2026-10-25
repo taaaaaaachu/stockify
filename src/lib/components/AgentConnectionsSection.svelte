@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { refreshAll } from '$app/navigation';
 	import { formatDate } from '#lib/format.js';
-	import { ApiError, REAUTH_REQUIRED, api, isPasskeyCancel, reauthenticate } from '#lib/app/passkey.js';
+	import { ApiError, REAUTH_REQUIRED, api, reauthenticate, reauthErrorMessage } from '#lib/app/passkey.js';
 	import ReauthPrompt from './ReauthPrompt.svelte';
 
 	interface Connection {
@@ -58,7 +58,7 @@
 		try {
 			await reauthenticate(password);
 		} catch (err) {
-			if (!isPasskeyCancel(err)) errorMessage = err instanceof Error ? err.message : '本人確認できませんでした。';
+			errorMessage = reauthErrorMessage(err) ?? errorMessage;
 			return;
 		} finally {
 			busy = false;
