@@ -20,6 +20,7 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
+		"@modelcontextprotocol/client": "^2.4.0",
 		"@sveltejs/adapter-node": "^6.0.0",
 		"@sveltejs/kit": "^3.1.0",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
@@ -41,13 +42,15 @@
 		"vitest": "^5.0.5"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/server": "^2.4.0",
 		"@node-rs/argon2": "^2.2.2",
 		"@simplewebauthn/browser": "^14.0.0",
 		"@simplewebauthn/server": "^14.0.3",
 		"better-sqlite3": "^13.0.3",
 		"drizzle-orm": "^0.45.4",
 		"idb": "^8.0.4",
-		"web-push": "^3.6.7"
+		"web-push": "^3.6.7",
+		"zod": "^4.6.7"
 	},
 	"imports": {
 		"#lib": "./src/lib/index.js",
