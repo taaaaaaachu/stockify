@@ -2,6 +2,9 @@
 import type { InstanceRole, HouseholdRole } from '#lib/rbac.js';
 
 declare global {
+	/** ビルド時の公開オリジン(paths.origin)。未指定なら空文字。vite.config.ts の define。 */
+	const __PATHS_ORIGIN__: string;
+
 	namespace App {
 		// interface Error {}
 		interface Locals {
