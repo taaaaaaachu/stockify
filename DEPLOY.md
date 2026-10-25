@@ -138,6 +138,9 @@ Compress-Archive -Path $items -DestinationPath ..\stockify-deploy.zip -Force
    入力した名前で**最初の世帯**が作られます。
 3. ほかの人を招くには、`/account` で招待コードを発行し、相手に `/register` で使ってもらいます
    (その世帯にメンバーとして参加)。世帯はヘッダのセレクタで切り替えられます。
+4. AI エージェント(MCP)に在庫を操作させるときは、エージェントに `https://stock.example.com/mcp` を登録します。
+   OAuth に対応したエージェントは同意画面で世帯を選んで許可します。対応していないエージェントには、
+   `/account` の「エージェント接続」で発行したトークンを `Authorization: Bearer` として設定します。
 
 ---
 
@@ -188,6 +191,8 @@ SQLite はプロジェクト直下 `data/app.sqlite` にあります。
 | 通知が来ない | ①ブラウザで通知を許可したか ②PWA としてインストールしたか(特に iOS)③`notify-cron` が起動しているか(Container Manager のログ)④購入推奨日に達した品目があるか(定期便が有効な品目は対象外)。 |
 | cron が 401 | `.env` の `CRON_SECRET` が空でないか。`app` と `notify-cron` は同じ `.env` を共有します。 |
 | ビルドが失敗する | DSM が 7.2 以降か(プロジェクトのビルド対応)。ログでネイティブビルドのエラーを確認。 |
+| エージェントが `/mcp` に繋がらない | Cloudflare の Bot Fight Mode や WAF、Access が `/mcp`・`/oauth/*`・`/.well-known/*` へのサーバーからのアクセスを止めていないか確認する。 |
+| エージェントの OAuth で「クライアントの情報を取得できませんでした」 | エージェントの `client_id`(https の URL)を NAS から取得できるか。DCR にしか対応しないエージェントは OAuth では繋がらないので、手動発行のトークンを使う。 |
 | 最初からやり直したい | Container Manager でプロジェクト停止 → File Station で `data/` を削除 → 起動(全データ消去)。 |
 
 ---
