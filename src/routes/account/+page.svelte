@@ -7,6 +7,7 @@
 	import { buildInviteRequestBody } from '#lib/app/inviteRequest.js';
 	import PasswordChangeForm from '#lib/components/PasswordChangeForm.svelte';
 	import CredentialsSection from '#lib/components/CredentialsSection.svelte';
+	import AgentConnectionsSection from '#lib/components/AgentConnectionsSection.svelte';
 	import { api, isPasskeyCancel, withPasskeyReauth } from '#lib/app/passkey.js';
 
 	let { data } = $props();
@@ -321,6 +322,8 @@
 <CredentialsSection credentials={data.credentials} />
 
 <PasswordChangeForm {hasPassword} />
+
+<AgentConnectionsSection connections={data.agentConnections} households={store.households} mcpUrl={data.mcpUrl} credentials={data.credentials} />
 
 <div style={section}>
 	<h2 style="margin:0 0 0.5rem; font-size:1rem;">所属している世帯</h2>
