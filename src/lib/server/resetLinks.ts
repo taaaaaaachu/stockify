@@ -1,6 +1,7 @@
 import { and, eq, gt } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Db } from './db';
+import { deleteUserAgentConnections } from './agentConnections';
 import { users, sessions, passkeys, resetLinks, type PasskeyRow } from './db/schema';
 
 /**
@@ -67,6 +68,7 @@ export function consumeResetLink(db: Db, token: string, credential: NewCredentia
 		db.delete(passkeys).where(eq(passkeys.userId, userId)).run();
 		db.delete(sessions).where(eq(sessions.userId, userId)).run();
 		db.delete(resetLinks).where(eq(resetLinks.userId, userId)).run();
+		deleteUserAgentConnections(db, userId);
 		const passwordHash = 'passwordHash' in credential ? credential.passwordHash : null;
 		db.update(users).set({ passwordHash, mustChangePassword: false }).where(eq(users.id, userId)).run();
 		if ('passkey' in credential) db.insert(passkeys).values({ ...credential.passkey, userId }).run();

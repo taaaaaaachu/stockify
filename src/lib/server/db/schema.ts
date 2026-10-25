@@ -117,6 +117,33 @@ export const memberships = sqliteTable(
 	]
 );
 
+/**
+ * エージェント接続(ADR 0012)。所属に結びつくので、脱退・除名・ユーザー削除で一緒に消える。
+ * トークンは SHA-256 ハッシュで持つ。手動発行はアクセストークンだけ(期限なし)、
+ * OAuth はアクセス(1時間)とリフレッシュを持ち、リフレッシュのたびに両方入れ替える。
+ */
+export const agentConnections = sqliteTable(
+	'agent_connections',
+	{
+		id: text('id').primaryKey(),
+		membershipId: text('membership_id')
+			.notNull()
+			.references(() => memberships.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		/** OAuth で作った接続のクライアント(CIMD の URL)。手動発行なら null。 */
+		clientId: text('client_id'),
+		accessHash: text('access_hash').notNull().unique(),
+		/** null = 期限なし(手動発行)。 */
+		accessExpiresAt: integer('access_expires_at'),
+		refreshHash: text('refresh_hash').unique(),
+		/** 1つ前のリフレッシュトークン。再び使われたら漏えいとみなして接続を消す。 */
+		previousRefreshHash: text('previous_refresh_hash'),
+		createdAt: integer('created_at').notNull(),
+		lastUsedAt: integer('last_used_at').notNull()
+	},
+	(t) => [index('agent_connections_membership_idx').on(t.membershipId)]
+);
+
 /** owner交代の保留申請。世帯ごとに保留は1件だけ。 */
 export const ownershipTransfers = sqliteTable(
 	'ownership_transfers',
@@ -288,3 +315,4 @@ export type PurchaseRow = typeof purchases.$inferSelect;
 export type RanoutRow = typeof ranouts.$inferSelect;
 export type AdjustmentRow = typeof adjustments.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
+export type AgentConnectionRow = typeof agentConnections.$inferSelect;

@@ -4,6 +4,7 @@ import { and, eq, ne, gt, count } from 'drizzle-orm';
 import { db } from './db';
 import { users, sessions, memberships, ownershipTransfers, passkeys, resetLinks, type UserRow } from './db/schema';
 import type { Db } from './db';
+import { deleteUserAgentConnections } from './agentConnections';
 
 export const SESSION_COOKIE = 'session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30日
@@ -91,6 +92,8 @@ export function resetPassword(userId: string, passwordHash: string, database: Db
 		tx.delete(sessions).where(eq(sessions.userId, userId)).run();
 		// 未使用のリセットリンクも使えなくする(ADR 0011)。
 		tx.delete(resetLinks).where(eq(resetLinks.userId, userId)).run();
+		// 乗っ取った人が作ったかもしれないエージェント接続も残さない(ADR 0012)。
+		deleteUserAgentConnections(database, userId);
 		return true;
 	});
 }
