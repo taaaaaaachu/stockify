@@ -1,5 +1,5 @@
 # --- ビルドステージ ---
-FROM node:24-trixie-slim AS build
+FROM node:26-trixie-slim AS build
 WORKDIR /app
 
 # better-sqlite3 / @node-rs/argon2 のネイティブビルドに備えて toolchain を入れる
@@ -22,7 +22,7 @@ RUN ORIGIN=$ORIGIN pnpm build
 RUN pnpm prune --prod
 
 # --- 実行ステージ ---
-FROM node:24-trixie-slim
+FROM node:26-trixie-slim
 WORKDIR /app
 ENV NODE_ENV=production
 ENV DATABASE_PATH=/data/app.sqlite
