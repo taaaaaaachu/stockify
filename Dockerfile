@@ -8,8 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # pnpm は package.json の packageManager に書いた版を corepack で使う。
+# Node 25 以降の公式イメージには corepack が同梱されないので npm で入れる。
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-RUN corepack enable
+RUN npm install -g corepack && corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
