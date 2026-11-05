@@ -29,17 +29,17 @@
 		"@types/web-push": "^3.6.4",
 		"drizzle-kit": "^0.31.11",
 		"eslint": "^10.14.0",
-		"eslint-plugin-svelte": "^3.23.1",
+		"eslint-plugin-svelte": "^3.24.0",
 		"fake-indexeddb": "^6.2.7",
-		"globals": "^17.13.0",
+		"globals": "^17.14.0",
 		"sharp": "^0.35.5",
 		"svelte": "^5.57.3",
-		"svelte-check": "^4.7.7",
-		"svelte-eslint-parser": "^1.10.0",
+		"svelte-check": "^4.7.8",
+		"svelte-eslint-parser": "^1.10.1",
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.72.1",
 		"vite": "^8.3.5",
-		"vitest": "^5.0.5"
+		"vitest": "^5.1.0"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/server": "^2.4.0",
