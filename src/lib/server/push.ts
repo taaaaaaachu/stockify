@@ -1,4 +1,4 @@
-import webpush from 'web-push';
+import { setVapidDetails, sendNotification } from 'web-push';
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } from '$app/env/private';
@@ -98,9 +98,9 @@ export async function sendWebPush(
 ): Promise<SendResult> {
 	const vapid = getVapid();
 	if (!vapid) return 'error';
-	webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+	setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
 	try {
-		await webpush.sendNotification(
+		await sendNotification(
 			{ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
 			JSON.stringify(payload)
 		);
