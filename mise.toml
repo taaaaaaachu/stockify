@@ -1,0 +1,5 @@
+[tools]
+# Dockerfile と CI の Node に揃える。pnpm は package.json の packageManager と同じ版にする
+node = "26"
+# allow_builds: mise は既定でインストールスクリプトを止めるが、pnpm はそれでネイティブバイナリに差し替わる
+"npm:pnpm" = { version = "12.18.0", allow_builds = ["pnpm"] }
