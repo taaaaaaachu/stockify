@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { remainingTrajectory } from './trajectory';
-import { MS_PER_DAY, type EstimateInput } from './estimate';
+import { estimate, MS_PER_DAY, type EstimateInput } from './estimate';
 import type { Purchase } from '#lib/types.js';
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -65,5 +65,12 @@ describe('remainingTrajectory', () => {
 		);
 		expect(Math.min(...pts.map((p) => p.remaining))).toBeGreaterThanOrEqual(0);
 		expect(pts.at(-1)?.remaining).toBe(0);
+	});
+
+	it('末尾は推定残量と一致し、0 到達点を含む', () => {
+		const inp = input({ purchases: [purchase(0, 100)], provisionalDaysToDeplete: 10 });
+		const pts = remainingTrajectory(inp, day(30));
+		expect(pts.at(-1)?.remaining).toBe(estimate(inp, day(30)).remaining);
+		expect(pts).toContainEqual({ t: day(10), remaining: 0 });
 	});
 });

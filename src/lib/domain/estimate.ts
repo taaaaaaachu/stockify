@@ -32,11 +32,11 @@ export interface EstimateInput {
 export interface Estimate {
 	/** 1 日あたりの消費量(volume/day)。推定不能なら null。 */
 	ratePerDay: number | null;
-	/** 現在の推定残量(単位量)。負値は「予想を超えて使い切った(枯渇済み)」を表す。null は推定不能。 */
+	/** 現在の推定残量(単位量、0 以上)。null は推定不能。 */
 	remaining: number | null;
-	/** 表示用にゼロ下限でクランプした残量。null は推定不能。 */
+	/** 表示用の残量。ウォーク方式で残量は 0 未満にならないため remaining と同値(互換のため残す)。 */
 	remainingClamped: number | null;
-	/** 枯渇予想日時(epoch ミリ秒)。既に枯渇なら now 以下。null は推定不能。 */
+	/** 枯渇予想日時(epoch ミリ秒)。既に枯渇なら残量が 0 になった時刻(now 以下)。null は推定不能。 */
 	depletionAt: number | null;
 	/** 購入推奨日時(epoch ミリ秒)= 枯渇予想 − リードタイム。定期便有効時や推定不能時は null。 */
 	recommendedPurchaseAt: number | null;
@@ -116,7 +116,10 @@ function purchaseIntervals(
 ): RateInterval[] {
 	const intervals: RateInterval[] = [];
 	for (let i = 0; i < events.length - 1; i++) {
-		intervals.push({ days: (events[i + 1].at - events[i].at) / MS_PER_DAY, volume: events[i].volume, quality });
+		const days = (events[i + 1].at - events[i].at) / MS_PER_DAY;
+		// 同日の買い足し等(1 日未満)は「その量を一瞬で消費した」観測になりレートを押し上げるため除外する。
+		if (days < MIN_SPAN_DAYS) continue;
+		intervals.push({ days, volume: events[i].volume, quality });
 	}
 	return intervals;
 }
@@ -189,59 +192,109 @@ export function consumptionRatePerDay(input: EstimateInput): number | null {
 	return null;
 }
 
-interface Anchor {
-	/** 基準時刻(epoch ミリ秒)。 */
-	at: number;
-	/** 基準時刻での既知残量。 */
+/** 残量推移の 1 点。 */
+export interface TrajectoryPoint {
+	t: number;
 	remaining: number;
-	/** 基準時刻ちょうどの購入を加算に含めるか(初回購入基準のときだけ true)。 */
-	includesPurchaseAtAnchor: boolean;
 }
 
+/** 残量ウォークの結果。 */
+export interface RemainingWalk {
+	/** グラフ用の推移(各イベントの直前・直後、0 到達点、now)。 */
+	points: TrajectoryPoint[];
+	/** now 時点の残量(0 以上)。 */
+	remaining: number;
+	/** 残量が 0 になった時刻。現在 0 でなければ null。 */
+	emptyAt: number | null;
+}
+
+type WalkEvent =
+	| { t: number; kind: 'add'; amount: number }
+	| { t: number; kind: 'set'; value: number };
+
 /**
- * 残量計算の基準点(アンカー)を選ぶ。
- * 「残量が既知の最も新しい時点」を採る:
- *  - 初回購入の直前は残量 0(初回購入自体を加算として数える)
- *  - 各使い切りイベントは残量 0
- *  - 各残量補正はその実測値
- * これらのうち最も新しい時刻のものを基準にする。
+ * イベント(購入・使い切り・残量補正)を時系列にたどって残量を求める(ADR 0001 再々改訂)。
+ *
+ * - 区間 [tᵢ, tᵢ₊₁] は「tᵢ 時点で確定していた購入・使い切りだけから推定したレート」で消費する。
+ *   後から入ったイベントが、終わった区間の消費を書き換えない(遡及適用しない)。
+ *   例外として、始点でレートが出せない区間(仮の値なしの初回区間など)は最初に推定できたレートで埋める。
+ *   消費 0 にすると、補正するまで初回購入分が丸ごと残り続けるため。
+ * - 購入は加算、使い切りは 0、残量補正は実測値に置き換える。同時刻は add → set の順。
+ * - 区間の途中で 0 に達したらそこで消費を止め、その時刻を emptyAt に記録する。
+ * - now より後のイベントは無視し、最後のイベントから now までも同じルールで消費する。
  */
-function pickAnchor(input: EstimateInput, purchasesAsc: Purchase[]): Anchor | null {
-	let anchor: Anchor | null = null;
+export function walkRemaining(input: EstimateInput, now: number): RemainingWalk | null {
+	const events: WalkEvent[] = [
+		...input.purchases.map((p) => ({ t: p.purchasedAt, kind: 'add' as const, amount: p.volume })),
+		...input.ranOutEvents.map((e) => ({ t: e.at, kind: 'set' as const, value: 0 })),
+		...input.adjustments.map((a) => ({ t: a.at, kind: 'set' as const, value: a.remaining }))
+	].filter((e) => e.t <= now);
+	if (events.length === 0) return null;
 
-	if (purchasesAsc.length >= 1) {
-		anchor = { at: purchasesAsc[0].purchasedAt, remaining: 0, includesPurchaseAtAnchor: true };
-	}
+	events.sort((a, b) => a.t - b.t || (a.kind === 'add' ? 0 : 1) - (b.kind === 'add' ? 0 : 1));
 
-	for (const e of input.ranOutEvents) {
-		if (anchor === null || e.at >= anchor.at) {
-			anchor = { at: e.at, remaining: 0, includesPurchaseAtAnchor: false };
+	// 各イベント直後に始まる区間のレート(その時点までに確定している購入・使い切りだけから推定)。
+	const rates = events.map((ev) =>
+		consumptionRatePerDay({
+			...input,
+			purchases: input.purchases.filter((p) => p.purchasedAt <= ev.t),
+			ranOutEvents: input.ranOutEvents.filter((e) => e.at <= ev.t)
+		})
+	);
+	const firstKnownRate = rates.find((r) => r !== null) ?? 0;
+
+	const points: TrajectoryPoint[] = [];
+	let remaining = 0;
+	let emptyAt: number | null = null;
+	let rate = 0;
+	let lastT = events[0].t;
+
+	const consumeUntil = (t: number) => {
+		if (remaining > 0 && rate > 0) {
+			const emptyT = lastT + (remaining / rate) * MS_PER_DAY;
+			if (emptyT <= t) {
+				remaining = 0;
+				emptyAt = emptyT;
+				if (emptyT < t) points.push({ t: emptyT, remaining: 0 });
+			} else {
+				remaining -= (rate * (t - lastT)) / MS_PER_DAY;
+			}
 		}
+		lastT = t;
+	};
+
+	for (const [i, ev] of events.entries()) {
+		consumeUntil(ev.t);
+		points.push({ t: ev.t, remaining }); // イベント直前
+		if (ev.kind === 'add') remaining += ev.amount;
+		else remaining = Math.max(0, ev.value);
+		if (remaining > 0) emptyAt = null;
+		else if (ev.kind === 'set') emptyAt = ev.t;
+		points.push({ t: ev.t, remaining }); // イベント直後
+		rate = rates[i] ?? firstKnownRate;
 	}
 
-	for (const adj of input.adjustments) {
-		if (anchor === null || adj.at >= anchor.at) {
-			anchor = { at: adj.at, remaining: adj.remaining, includesPurchaseAtAnchor: false };
-		}
+	if (now > lastT) {
+		consumeUntil(now);
+		points.push({ t: now, remaining });
 	}
 
-	return anchor;
+	return { points, remaining, emptyAt };
 }
 
 /**
  * ある品目の残量・枯渇予想日・購入推奨日を推定する。
  *
- * 残量 = 基準残量 + (基準時刻より後の購入で入った量) − 消費レート × 経過日数。
- * 枯渇予想日 = 残量がゼロを切る時点(現在の残量とレートから外挿。将来の定期便配送は織り込まない)。
+ * 残量 = walkRemaining による時系列ウォーク(区間ごとにその時点のレートで消費、0 下限)。
+ * 枯渇予想日 = 残量 0 ならその到達時刻、正なら now + 残量 ÷ 最新レート(将来の定期便配送は織り込まない)。
  * 購入推奨日 = 枯渇予想日 − リードタイム(品目固有 > 全体既定)。
  *   ただし定期便の次回配送が枯渇予想日までに届くなら、自動補充される前提で null(ADR 0002 改訂)。
  */
 export function estimate(input: EstimateInput, now: number): Estimate {
-	const purchasesAsc = [...input.purchases].sort(byTimeAsc((p) => p.purchasedAt));
 	const ratePerDay = consumptionRatePerDay(input);
-	const anchor = pickAnchor(input, purchasesAsc);
+	const walk = walkRemaining(input, now);
 
-	if (anchor === null) {
+	if (walk === null) {
 		return {
 			ratePerDay,
 			remaining: null,
@@ -251,22 +304,10 @@ export function estimate(input: EstimateInput, now: number): Estimate {
 		};
 	}
 
-	const additions = sumVolume(
-		purchasesAsc,
-		(p) =>
-			p.purchasedAt <= now &&
-			(anchor.includesPurchaseAtAnchor ? p.purchasedAt >= anchor.at : p.purchasedAt > anchor.at)
-	);
-	const elapsedDays = Math.max(0, (now - anchor.at) / MS_PER_DAY);
-	const consumed = ratePerDay !== null ? ratePerDay * elapsedDays : 0;
-	const remaining = anchor.remaining + additions - consumed;
-	const remainingClamped = Math.max(0, remaining);
-
+	const { remaining } = walk;
 	let depletionAt: number | null = null;
 	if (ratePerDay !== null && ratePerDay > 0) {
-		// remaining が 0 を切る時点。既に負なら過去(枯渇済み)として now 以前になる。
-		const daysUntilEmpty = remaining / ratePerDay;
-		depletionAt = now + daysUntilEmpty * MS_PER_DAY;
+		depletionAt = remaining > 0 ? now + (remaining / ratePerDay) * MS_PER_DAY : (walk.emptyAt ?? now);
 	}
 
 	let recommendedPurchaseAt: number | null = null;
@@ -281,7 +322,7 @@ export function estimate(input: EstimateInput, now: number): Estimate {
 		}
 	}
 
-	return { ratePerDay, remaining, remainingClamped, depletionAt, recommendedPurchaseAt };
+	return { ratePerDay, remaining, remainingClamped: remaining, depletionAt, recommendedPurchaseAt };
 }
 
 /** StockItem から EstimateInput の品目固有フィールドを埋めるヘルパ。 */
