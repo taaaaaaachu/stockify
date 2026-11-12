@@ -257,15 +257,17 @@ describe('estimate: 残量', () => {
 		expect(e.remaining).toBeCloseTo(400, 10);
 	});
 
-	it('残量が予想を超えて減ると負値になり、クランプ版は 0', () => {
+	// ウォーク方式への変更で負の残量(超過量)は廃止。0 で止まり、枯渇日は 0 になった時刻になる。
+	it('残量は 0 で止まり、depletionAt は 0 になった時刻になる', () => {
 		const input = baseInput({
 			purchases: [purchase(0, 300)],
 			provisionalDaysToDeplete: 30 // 10ml/day
 		});
-		// 40 日後 → 300 − 400 = −100
+		// 30 日目に 0 に達し、40 日目も 0 のまま。「10日超過」は now − depletionAt で出る。
 		const e = estimate(input, day(40));
-		expect(e.remaining).toBeCloseTo(-100, 10);
+		expect(e.remaining).toBe(0);
 		expect(e.remainingClamped).toBe(0);
+		expect(e.depletionAt).toBeCloseTo(day(30), -1);
 	});
 
 	it('使い切りイベントを基準に残量がリセットされる', () => {
@@ -274,10 +276,10 @@ describe('estimate: 残量', () => {
 			purchases: [purchase(0, 300), purchase(30, 300), purchase(60, 300)],
 			ranOutEvents: [ranOut(20)]
 		});
-		// 基準 = 20日で残量0。以降(20<t<=70)の購入: 30日(300)+60日(300)=600 投入。
-		// 70日時点: 0 + 600 − 10*(70−20) = 600 − 500 = 100
+		// 20日で残量0。空の間(20〜30日)は消費しない(ウォーク方式で変更。旧方式は空でも引いて 100 だった)。
+		// 30日 +300 → 60日で 0 → +300 → 70日: 300 − 10*10 = 200
 		const e = estimate(input, day(70));
-		expect(e.remaining).toBeCloseTo(100, 10);
+		expect(e.remaining).toBeCloseTo(200, 10);
 	});
 
 	it('残量補正が最新なら実測値を原点にする', () => {
@@ -296,10 +298,11 @@ describe('estimate: 残量', () => {
 			adjustments: [adjust(45, 999)], // 古い
 			ranOutEvents: [ranOut(55)] // こちらが新しい → 残量0基準
 		});
-		// 60日 → 0 − 10*5 = −50(枯渇済み)
+		// 55日で 0 のまま 60日へ(負値は廃止)。枯渇日は使い切りの時刻。
 		const e = estimate(input, day(60));
-		expect(e.remaining).toBeCloseTo(-50, 10);
+		expect(e.remaining).toBe(0);
 		expect(e.remainingClamped).toBe(0);
+		expect(e.depletionAt).toBe(day(55));
 	});
 });
 
@@ -365,5 +368,65 @@ describe('estimate: 枯渇予想日・購入推奨日', () => {
 		const e = estimate(input, day(10));
 		expect(e.depletionAt).toBeNull();
 		expect(e.recommendedPurchaseAt).toBeNull();
+	});
+});
+
+describe('estimate: ウォーク方式(遡及適用しない)', () => {
+	it('購入を追加しても、過去区間の消費は変わらない', () => {
+		const before = baseInput({ purchases: [purchase(0, 300), purchase(30, 300)] }); // 10/日
+		// 31日目に大量購入するとレート推定は変わるが、0〜31日の消費は当時のレートのまま。
+		const after = baseInput({ purchases: [...before.purchases, purchase(31, 3000)] });
+		const at31 = estimate(before, day(31)).remaining!;
+		expect(estimate(after, day(31)).remaining).toBeCloseTo(at31 + 3000, 10);
+	});
+
+	it('仮の値が無い初回区間は、最初に推定できたレートで消費する', () => {
+		const input = baseInput({ purchases: [purchase(0, 400), purchase(40, 400), purchase(80, 400)] });
+		// 0〜40日は始点でレート不明 → 40日時点のレート 10/日で埋める。80日: 400
+		expect(estimate(input, day(80)).remaining).toBeCloseTo(400, 10);
+	});
+
+	it('1 日未満の購入区間はレートに影響しない', () => {
+		const base = [purchase(0, 300), purchase(30, 300)];
+		const sameDay: Purchase = { ...purchase(30, 50, 'same'), purchasedAt: day(30) - 47 * 60 * 1000 };
+		const withSameDay = baseInput({ purchases: [...base, sameDay] });
+		// 47分前の 50 は「一瞬で 50 消費」の観測にならない。残る区間は 0→(30日−47分) の 300 だけ。
+		expect(consumptionRatePerDay(withSameDay)).toBeCloseTo(300 / (30 - 47 / 1440), 10);
+	});
+});
+
+describe('estimate: 実データ(トイレットペーパー)', () => {
+	const jst = (s: string) => Date.parse(`${s}+09:00`);
+	const p = (s: string, volume: number): Purchase => ({ ...purchase(0, volume, s), purchasedAt: jst(s) });
+	const a = (s: string, remaining: number): RemainingAdjustment => ({ ...adjust(0, remaining, s), at: jst(s) });
+	const now = jst('2026-11-13T00:41');
+	const fixture = (extra: Purchase[] = []) =>
+		baseInput({
+			provisionalDaysToDeplete: 7,
+			purchases: [
+				p('2026-07-28T22:48', 1),
+				p('2026-07-28T23:35', 4),
+				p('2026-08-18T00:00', 8),
+				p('2026-09-27T23:08', 8),
+				p('2026-11-12T00:00', 8),
+				...extra
+			],
+			adjustments: [
+				a('2026-07-30T00:00', 4),
+				a('2026-08-05T00:00', 3),
+				a('2026-08-10T00:00', 2),
+				a('2026-08-14T00:00', 1),
+				a('2026-09-04T00:00', 5)
+			]
+		});
+
+	it('残量は約 7.8', () => {
+		expect(Math.abs(estimate(fixture(), now).remaining! - 7.8)).toBeLessThanOrEqual(0.3);
+	});
+
+	it('今 8 個買うと残量がほぼそのまま 8 増える(約 15.8)', () => {
+		const e = estimate(fixture([p('2026-11-13T00:41', 8)]), now);
+		expect(Math.abs(e.remaining! - 15.8)).toBeLessThanOrEqual(0.3);
+		expect(e.remaining).toBeCloseTo(estimate(fixture(), now).remaining! + 8, 10);
 	});
 });
