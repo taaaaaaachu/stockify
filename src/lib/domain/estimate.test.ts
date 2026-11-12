@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	consumptionRatePerDay,
 	estimate,
+	lengthTrust,
 	weightedRatePerDay,
 	MS_PER_DAY,
 	type EstimateInput,
@@ -175,6 +176,15 @@ describe('consumptionRatePerDay', () => {
 			})
 		);
 		expect(rate).toBeCloseTo(10, 6);
+	});
+});
+
+describe('lengthTrust: 購入区間の長さによる信頼度', () => {
+	it('7 日で 1、3.5 日で 0.5、0 日付近でほぼ 0、7 日超も 1', () => {
+		expect(lengthTrust(7)).toBe(1);
+		expect(lengthTrust(3.5)).toBe(0.5);
+		expect(lengthTrust(0.01)).toBeLessThan(0.01);
+		expect(lengthTrust(30)).toBe(1);
 	});
 });
 
@@ -386,12 +396,13 @@ describe('estimate: ウォーク方式(遡及適用しない)', () => {
 		expect(estimate(input, day(80)).remaining).toBeCloseTo(400, 10);
 	});
 
-	it('1 日未満の購入区間はレートに影響しない', () => {
+	// 固定の 1 日未満除外から長さ信頼度(lengthTrust)に置き換えたため、影響は 0 ではなく「ほぼ 0」。
+	it('1 日未満の購入区間はレートにほぼ影響しない', () => {
 		const base = [purchase(0, 300), purchase(30, 300)];
 		const sameDay: Purchase = { ...purchase(30, 50, 'same'), purchasedAt: day(30) - 47 * 60 * 1000 };
 		const withSameDay = baseInput({ purchases: [...base, sameDay] });
 		// 47分前の 50 は「一瞬で 50 消費」の観測にならない。残る区間は 0→(30日−47分) の 300 だけ。
-		expect(consumptionRatePerDay(withSameDay)).toBeCloseTo(300 / (30 - 47 / 1440), 10);
+		expect(consumptionRatePerDay(withSameDay)).toBeCloseTo(300 / (30 - 47 / 1440), 1);
 	});
 });
 
@@ -420,8 +431,19 @@ describe('estimate: 実データ(トイレットペーパー)', () => {
 			]
 		});
 
-	it('残量は約 7.8', () => {
-		expect(Math.abs(estimate(fixture(), now).remaining! - 7.8)).toBeLessThanOrEqual(0.3);
+	it('残量は約 7.8、レートは約 0.187(区間はほぼ 7 日以上なので長さ信頼度の影響を受けない)', () => {
+		const e = estimate(fixture(), now);
+		expect(Math.abs(e.remaining! - 7.8)).toBeLessThanOrEqual(0.3);
+		expect(e.ratePerDay).toBeCloseTo(0.187, 2);
+	});
+
+	it('1.05 日後の買い足しでレートが跳ねず、枯渇予想が 70 日以上先になる', () => {
+		const later = jst('2026-11-13T01:16');
+		const e = estimate(fixture([p('2026-11-13T01:16', 8)]), later);
+		expect(Math.abs(e.remaining! - 15.8)).toBeLessThanOrEqual(0.3);
+		expect(e.ratePerDay).toBeGreaterThanOrEqual(0.19);
+		expect(e.ratePerDay).toBeLessThanOrEqual(0.22);
+		expect((e.depletionAt! - later) / MS_PER_DAY).toBeGreaterThanOrEqual(70);
 	});
 
 	it('今 8 個買うと残量がほぼそのまま 8 増える(約 15.8)', () => {

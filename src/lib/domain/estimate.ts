@@ -68,6 +68,18 @@ export const RATE_HALFLIFE_CYCLES = 3;
  */
 export const PURCHASE_QUALITY = 0.5;
 
+/**
+ * 購入区間がフル信頼になる長さ(日)。これ未満は日数に比例して線形に割り引く(lengthTrust)。
+ * 在庫が十分あるうちの買い足し(安売り・配達都合・記録日のズレ)でも購入区間は短くなり、
+ * 「速く消費した」という誤った観測になるため。1 週間あれば生活のリズム 1 周分として信頼する。
+ */
+export const TRUST_FULL_DAYS = 7;
+
+/** 購入区間の長さによる信頼度(0〜1)。TRUST_FULL_DAYS 以上で 1。 */
+export function lengthTrust(days: number): number {
+	return Math.min(1, days / TRUST_FULL_DAYS);
+}
+
 /** 1 区間(前の基準から次の基準まで)の観測: その間に消費した量・経過日数・信頼度。 */
 export interface RateInterval {
 	days: number;
@@ -117,9 +129,9 @@ function purchaseIntervals(
 	const intervals: RateInterval[] = [];
 	for (let i = 0; i < events.length - 1; i++) {
 		const days = (events[i + 1].at - events[i].at) / MS_PER_DAY;
-		// 同日の買い足し等(1 日未満)は「その量を一瞬で消費した」観測になりレートを押し上げるため除外する。
-		if (days < MIN_SPAN_DAYS) continue;
-		intervals.push({ days, volume: events[i].volume, quality });
+		if (days <= 0) continue; // 同時刻は coalesce 済みだが念のため
+		// 短い区間ほど買い足しの可能性が高いので信頼度を下げる(使い切り区間には掛けない)。
+		intervals.push({ days, volume: events[i].volume, quality: quality * lengthTrust(days) });
 	}
 	return intervals;
 }
