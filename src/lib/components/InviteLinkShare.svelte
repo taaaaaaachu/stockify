@@ -54,10 +54,13 @@
 			height="200"
 			role="img"
 			aria-label="招待リンクのQRコード"
-			shape-rendering="crispEdges"
 			style="background:#fff;"
 		>
 			<path d={qr.d} fill="#000" />
+			{#each qr.finders as f (`${f.x},${f.y}`)}
+				<rect x={f.x + 0.5} y={f.y + 0.5} width="6" height="6" rx="1.6" fill="none" stroke="#000" />
+				<rect x={f.x + 2} y={f.y + 2} width="3" height="3" rx="0.9" fill="#000" />
+			{/each}
 			<rect
 				x={(qr.size - logo) / 2 - 0.5}
 				y={(qr.size - logo) / 2 - 0.5}

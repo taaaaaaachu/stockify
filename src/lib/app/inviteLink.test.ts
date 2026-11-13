@@ -9,13 +9,18 @@ describe('inviteLinkUrl', () => {
 });
 
 describe('qrPath', () => {
-	it('暗いマスの数だけ正方形を描き、余白込みの大きさを返す', () => {
+	it('位置検出パターン以外の暗いマスをドットにし、3 つのパターンの位置を返す', () => {
 		const text = 'https://example.test/invite/abc';
 		const { size, data } = encode(text, QR_OPTIONS);
-		const dark = data.flat().filter(Boolean).length;
 		const result = qrPath(text);
 		expect(result.size).toBe(size);
-		expect(result.d.match(/M/g)?.length).toBe(dark);
-		expect(data[0].some(Boolean)).toBe(false);
+		expect(result.finders).toEqual([
+			{ x: 2, y: 2 },
+			{ x: size - 9, y: 2 },
+			{ x: 2, y: size - 9 }
+		]);
+		// 位置検出パターン 1 つは暗いマス 33 個(7x7 の枠 24 + 中央 3x3 の 9)。
+		const dark = data.flat().filter(Boolean).length;
+		expect(result.d.match(/M/g)?.length).toBe(dark - 33 * 3);
 	});
 });
