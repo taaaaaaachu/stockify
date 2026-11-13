@@ -21,7 +21,8 @@ import {
 	listHouseholdSummaries,
 	removeHouseholdMember,
 	setHouseholdNotifyEnabled,
-	precheckRegistration
+	precheckRegistration,
+	previewInvite
 } from './households';
 
 let db: Db;
@@ -323,5 +324,26 @@ describe('precheckRegistration', () => {
 		expect(precheckRegistration(db, { username: 'new', requireInvite: true, inviteCode: invite.code })).toBeNull();
 		// 事前検証では招待を消費しない。
 		expect(registerUser(db, { username: 'new', passwordHash: 'x', requireInvite: true, inviteCode: invite.code }).ok).toBe(true);
+	});
+});
+
+describe('previewInvite', () => {
+	it('招待先の世帯名・発行者・状態を返し、コードは消費しない', () => {
+		const alice = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		if (!alice.ok) throw new Error('setup failed');
+		const invite = createInvite(db, alice.householdId, alice.user.id, null);
+		const name = listUserHouseholds(db, alice.user.id)[0].name;
+		expect(previewInvite(db, invite.code, null)).toEqual({ householdId: alice.householdId, householdName: name, issuer: 'alice', state: 'active', alreadyMember: false });
+		expect(previewInvite(db, invite.code, alice.user.id)?.alreadyMember).toBe(true);
+		expect(inviteState(db.select().from(invites).where(eq(invites.id, invite.id)).get()!)).toBe('active');
+	});
+
+	it('存在しないコードは null、無効化済みは revoked', () => {
+		const alice = registerUser(db, { username: 'alice', passwordHash: 'x', requireInvite: false });
+		if (!alice.ok) throw new Error('setup failed');
+		const invite = createInvite(db, alice.householdId, alice.user.id, null);
+		revokeInvite(db, alice.householdId, invite.id);
+		expect(previewInvite(db, 'nope', null)).toBeNull();
+		expect(previewInvite(db, invite.code, null)?.state).toBe('revoked');
 	});
 });

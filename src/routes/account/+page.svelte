@@ -5,6 +5,7 @@
 	import { IndexedDbRepository } from '#lib/repo/indexeddb.js';
 	import { formatDate } from '#lib/format.js';
 	import { buildInviteRequestBody } from '#lib/app/inviteRequest.js';
+	import InviteLinkShare from '#lib/components/InviteLinkShare.svelte';
 	import PasswordChangeForm from '#lib/components/PasswordChangeForm.svelte';
 	import CredentialsSection from '#lib/components/CredentialsSection.svelte';
 	import AgentConnectionsSection from '#lib/components/AgentConnectionsSection.svelte';
@@ -38,6 +39,8 @@
 	let adminHouseholdName = $state('');
 	let adminHouseholdError = $state('');
 	let adminInviteCodes = $state<Record<string, string>>({});
+	/** 一覧でリンク・QR を開いている招待。 */
+	let openLinkId = $state<string | null>(null);
 
 	async function copyToClipboard(code: string) {
 		try {
@@ -383,10 +386,13 @@
 			>
 		</form>
 		{#if lastCode}
-			<p style="font-size:0.9rem; display:flex; gap:0.5rem; align-items:center;">
-				<span>発行しました: <code style="font-weight:700; user-select:all;">{lastCode}</code></span>
-				<button type="button" onclick={() => copyToClipboard(lastCode!)} style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === lastCode ? 'コピーしました' : 'コピー'}</button>
-			</p>
+			<div style="font-size:0.9rem; display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.7rem;">
+				<span style="display:flex; gap:0.5rem; align-items:center;">
+					発行しました: <code style="font-weight:700; user-select:all;">{lastCode}</code>
+					<button type="button" onclick={() => copyToClipboard(lastCode!)} style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === lastCode ? 'コピーしました' : 'コードをコピー'}</button>
+				</span>
+				<InviteLinkShare code={lastCode} />
+			</div>
 		{/if}
 		{#if data.invites.length > 0}
 			<ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.3rem;">
@@ -396,6 +402,9 @@
 						<span style="color:var(--muted);">{stateLabel[inv.state]}</span>
 						{#if inv.invitee}<span style="color:var(--muted);">→ {inv.invitee}</span>{/if}
 						{#if inv.expiresAt}<span style="color:var(--muted);">〜{formatDate(inv.expiresAt)}</span>{/if}
+						{#if inv.state === 'active'}
+							<button onclick={() => (openLinkId = openLinkId === inv.id ? null : inv.id)} style="border:none; background:none; color:var(--accent); cursor:pointer;">リンク</button>
+						{/if}
 						<span style="margin-left:auto; display:flex; gap:0.4rem;">
 							{#if inv.state === 'active'}
 								<button onclick={() => revoke(inv.id)} style="border:none; background:none; color:var(--warn); cursor:pointer;">無効化</button>
@@ -403,6 +412,9 @@
 							<button onclick={() => remove(inv.id)} style="border:none; background:none; color:var(--danger); cursor:pointer;">削除</button>
 						</span>
 					</li>
+					{#if openLinkId === inv.id && inv.state === 'active'}
+						<li><InviteLinkShare code={inv.code} /></li>
+					{/if}
 				{/each}
 			</ul>
 	{/if}
@@ -457,12 +469,13 @@
 			<button type="submit" disabled={busy} style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 0.8rem; cursor:pointer;">世帯を作成</button>
 		</form>
 		{#each adminHouseholds as household (household.id)}
-			<div style="display:flex; gap:0.5rem; align-items:center; font-size:0.85rem; border-top:1px solid var(--border); padding:0.4rem 0;">
+			<div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; font-size:0.85rem; border-top:1px solid var(--border); padding:0.4rem 0;">
 				<span>{household.name}</span><span style="color:var(--muted);">所属{household.memberCount}人 / owner{household.ownerCount}人 / 品目{household.itemCount}件 / 招待{household.activeInviteCount}件</span>
 				<button onclick={() => createAdminInvite(household)} style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.3rem 0.6rem; cursor:pointer;">招待コード発行</button>
 				{#if adminInviteCodes[household.id]}
 					<code style="user-select:all;">{adminInviteCodes[household.id]}</code>
 					<button type="button" onclick={() => copyToClipboard(adminInviteCodes[household.id])} style="border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:0.4rem; padding:0.25rem 0.5rem; cursor:pointer;">{copiedCode === adminInviteCodes[household.id] ? 'コピーしました' : 'コピー'}</button>
+					<InviteLinkShare code={adminInviteCodes[household.id]} />
 				{/if}
 				<button onclick={() => deleteAdminHousehold(household)} style="margin-left:auto; border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">削除</button>
 			</div>
