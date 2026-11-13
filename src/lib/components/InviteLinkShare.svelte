@@ -7,6 +7,8 @@
 
 	const url = $derived(inviteLinkUrl(page.url.origin, code));
 	const qr = $derived(qrPath(url));
+	// 中央のアイコンは QR の幅の約 2 割(誤り訂正 H で読める範囲に収める)。
+	const logo = $derived(qr.size * 0.22);
 	let showQr = $state(false);
 	let copied = $state(false);
 	// 共有シートの有無はブラウザでしかわからない(SSR との食い違いを避けて描画後に判定する)。
@@ -56,6 +58,15 @@
 			style="background:#fff;"
 		>
 			<path d={qr.d} fill="#000" />
+			<rect
+				x={(qr.size - logo) / 2 - 0.5}
+				y={(qr.size - logo) / 2 - 0.5}
+				width={logo + 1}
+				height={logo + 1}
+				rx="1"
+				fill="#fff"
+			/>
+			<image href="/icon.svg" x={(qr.size - logo) / 2} y={(qr.size - logo) / 2} width={logo} height={logo} />
 		</svg>
 	{/if}
 </div>

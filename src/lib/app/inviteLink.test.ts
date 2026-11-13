@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { encode } from 'uqr';
-import { inviteLinkUrl, qrPath } from './inviteLink';
+import { inviteLinkUrl, qrPath, QR_OPTIONS } from './inviteLink';
 
 describe('inviteLinkUrl', () => {
 	it('オリジンの /invite/ 配下にコードを置く', () => {
@@ -11,7 +11,7 @@ describe('inviteLinkUrl', () => {
 describe('qrPath', () => {
 	it('暗いマスの数だけ正方形を描き、余白込みの大きさを返す', () => {
 		const text = 'https://example.test/invite/abc';
-		const { size, data } = encode(text, { border: 2 });
+		const { size, data } = encode(text, QR_OPTIONS);
 		const dark = data.flat().filter(Boolean).length;
 		const result = qrPath(text);
 		expect(result.size).toBe(size);
