@@ -7,13 +7,17 @@ import {
 } from '#lib/server/auth.js';
 import { setSessionCookie, setHouseholdCookie } from '#lib/server/sessionCookie.js';
 import { db } from '#lib/server/db/index.js';
-import { countUsers, registerUser, REGISTER_ERROR_MESSAGES } from '#lib/server/households.js';
+import { countUsers, previewInvite, registerUser, REGISTER_ERROR_MESSAGES } from '#lib/server/households.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ locals }) => {
+export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) throw redirect(303, '/');
+	// 招待リンクから来た場合は、使える招待ならコード欄を隠して招待先を示す。
+	const code = url.searchParams.get('invite')?.trim() ?? '';
+	const preview = code ? previewInvite(db, code, null) : null;
+	const invite = preview?.state === 'active' ? { code, householdName: preview.householdName } : null;
 	// ユーザーが 0 人のときだけ招待コードなしで登録できる(ブートストラップ)。
-	return { requireInvite: countUsers(db) > 0 };
+	return { requireInvite: countUsers(db) > 0, invite };
 };
 
 export const actions: Actions = {

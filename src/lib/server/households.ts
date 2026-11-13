@@ -400,6 +400,42 @@ export function listHouseholdInvites(db: Db, householdId: string): HouseholdInvi
 		}));
 }
 
+export interface InvitePreview {
+	householdId: string;
+	householdName: string;
+	issuer: string | null;
+	state: InviteState;
+	/** 閲覧者が既にその世帯に所属しているか(未ログインなら false)。 */
+	alreadyMember: boolean;
+}
+
+/** 招待リンクの確認画面用。コードを消費せずに招待先と状態を返す。存在しなければ null。 */
+export function previewInvite(db: Db, code: string, viewerId: string | null): InvitePreview | null {
+	const issuer = alias(users, 'issuer');
+	const row = db
+		.select({
+			householdId: invites.householdId,
+			householdName: households.name,
+			issuer: issuer.username,
+			usedBy: invites.usedBy,
+			expiresAt: invites.expiresAt,
+			revokedAt: invites.revokedAt
+		})
+		.from(invites)
+		.innerJoin(households, eq(invites.householdId, households.id))
+		.leftJoin(issuer, eq(invites.createdBy, issuer.id))
+		.where(eq(invites.code, code))
+		.get();
+	if (!row) return null;
+	return {
+		householdId: row.householdId,
+		householdName: row.householdName,
+		issuer: row.issuer,
+		state: inviteState(row),
+		alreadyMember: viewerId !== null && getMembership(db, viewerId, row.householdId) !== null
+	};
+}
+
 /** 招待を無効化する(その世帯のもののみ、未使用・未無効化が対象)。 */
 export function revokeInvite(db: Db, householdId: string, id: string): boolean {
 	const res = db

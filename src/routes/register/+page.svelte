@@ -63,7 +63,10 @@
 	{:else}
 		<small style="color:var(--muted);">登録後、アカウント画面からパスワードやほかの端末のパスキーも追加できます。</small>
 	{/if}
-	{#if data.requireInvite}
+	{#if data.requireInvite && data.invite}
+		<input type="hidden" name="invite" value={data.invite.code} />
+		<p style="margin:0; font-size:0.9rem;">登録すると世帯「{data.invite.householdName}」に参加します。</p>
+	{:else if data.requireInvite}
 		<label style="display:flex; flex-direction:column; gap:0.25rem;">
 			<span>招待コード</span>
 			<input name="invite" required />
