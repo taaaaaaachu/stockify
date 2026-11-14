@@ -2,7 +2,7 @@ import { error } from '@sveltejs/kit';
 import { db } from '#lib/server/db/index.js';
 import * as stock from '#lib/server/stock.js';
 import { requireHousehold } from '#lib/server/apiGuard.js';
-import { parseClientId, parseNonNegativeNumber } from '#lib/server/inputValidation.js';
+import { parseClientId, parseNonNegativeNumber, parseTrackingMode } from '#lib/server/inputValidation.js';
 import type { RequestHandler } from './$types';
 
 function str(v: unknown): string {
@@ -30,7 +30,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		unit,
 		category: str(body?.category) || null,
 		leadTimeDays: optionalNonNegativeNumber(body?.leadTimeDays, 'リードタイム'),
-		provisionalDaysToDeplete: optionalNonNegativeNumber(body?.provisionalDaysToDeplete, '仮の消費日数')
+		provisionalDaysToDeplete: optionalNonNegativeNumber(body?.provisionalDaysToDeplete, '仮の消費日数'),
+		trackingMode: parseTrackingMode(body?.trackingMode ?? 'estimated'),
+		lowStockThreshold: optionalNonNegativeNumber(body?.lowStockThreshold, '在庫わずかの閾値')
 	}, id);
 	if (!item) throw error(404, '品目が見つかりません。');
 	return Response.json(item, { status: 201 });

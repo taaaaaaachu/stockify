@@ -7,7 +7,9 @@ import type {
 	ItemBundle,
 	PurchaseInput,
 	StockItemInput,
-	SubscriptionInput
+	StockItemPatch,
+	SubscriptionInput,
+	UsageInput
 } from '#lib/repo/types.js';
 import type { InstanceRole, HouseholdRole } from '#lib/rbac.js';
 import type { ProductLink, Subscription } from '#lib/types.js';
@@ -145,7 +147,8 @@ class Store {
 		await this.reload();
 		return item.id;
 	}
-	async editItem(id: string, patch: Partial<StockItemInput>): Promise<void> {
+	/** 推定 → 手動の切替では patch.currentRemaining が必須(ADR 0013)。 */
+	async editItem(id: string, patch: StockItemPatch): Promise<void> {
 		await this.repo.updateItem(id, patch);
 		await this.reload();
 	}
@@ -205,6 +208,16 @@ class Store {
 	}
 	async removeAdjustment(id: string): Promise<void> {
 		await this.repo.deleteAdjustment(id);
+		await this.reload();
+	}
+
+	// --- 使用(手動モードのみ) ---
+	async addUsage(input: UsageInput): Promise<void> {
+		await this.repo.createUsageEvent(input);
+		await this.reload();
+	}
+	async removeUsage(id: string): Promise<void> {
+		await this.repo.deleteUsageEvent(id);
 		await this.reload();
 	}
 

@@ -211,7 +211,11 @@ export const stockItems = sqliteTable(
 		unit: text('unit').notNull(),
 		category: text('category'),
 		leadTimeDays: real('lead_time_days'),
-		provisionalDaysToDeplete: real('provisional_days_to_deplete')
+		provisionalDaysToDeplete: real('provisional_days_to_deplete'),
+		/** 管理モード(ADR 0013)。既存行は推定モード。 */
+		trackingMode: text('tracking_mode').notNull().$type<'estimated' | 'manual'>().default('estimated'),
+		/** 手動モードの在庫わずか閾値。null なら閾値通知なし。 */
+		lowStockThreshold: real('low_stock_threshold')
 	},
 	(t) => [index('stock_items_household_idx').on(t.householdId)]
 );
@@ -274,6 +278,20 @@ export const adjustments = sqliteTable(
 	(t) => [index('adjustments_item_idx').on(t.itemId)]
 );
 
+/** 使用イベント(手動モードの品目のみ。ADR 0013)。 */
+export const usages = sqliteTable(
+	'usages',
+	{
+		id: text('id').primaryKey(),
+		itemId: text('item_id')
+			.notNull()
+			.references(() => stockItems.id, { onDelete: 'cascade' }),
+		at: integer('at').notNull(),
+		volume: real('volume').notNull()
+	},
+	(t) => [index('usages_item_idx').on(t.itemId)]
+);
+
 /** 定期便。 */
 export const subscriptions = sqliteTable(
 	'subscriptions',
@@ -326,5 +344,6 @@ export type ProductLinkRow = typeof productLinks.$inferSelect;
 export type PurchaseRow = typeof purchases.$inferSelect;
 export type RanoutRow = typeof ranouts.$inferSelect;
 export type AdjustmentRow = typeof adjustments.$inferSelect;
+export type UsageRow = typeof usages.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type AgentConnectionRow = typeof agentConnections.$inferSelect;

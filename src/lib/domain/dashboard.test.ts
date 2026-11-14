@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildDashboard, buildRow, shoppingList } from './dashboard';
+import { buildDashboard, buildRow, lowStockList, shoppingList } from './dashboard';
 import { MS_PER_DAY } from './estimate';
 import type { AppSettings, ItemBundle } from '#lib/repo/types.js';
 import type { Purchase, StockItem, Subscription } from '#lib/types.js';
@@ -16,6 +16,8 @@ const item = (over: Partial<StockItem> = {}): StockItem => ({
 	category: null,
 	leadTimeDays: null,
 	provisionalDaysToDeplete: null,
+	trackingMode: 'estimated',
+	lowStockThreshold: null,
 	...over
 });
 
@@ -186,5 +188,54 @@ describe('shoppingList', () => {
 		});
 		const list = shoppingList(buildDashboard([covered, uncovered], settings, day(25)));
 		expect(list.map((r) => r.item.id)).toEqual(['uncovered']);
+	});
+});
+
+describe('手動モード: 在庫わずか(ADR 0013)', () => {
+	const manual = (id: string, threshold: number | null, over: Partial<ItemBundle> = {}) =>
+		bundle({
+			item: item({ id, name: id, trackingMode: 'manual', lowStockThreshold: threshold, provisionalDaysToDeplete: 1 }),
+			...over
+		});
+	const usage = (dayN: number, volume: number, itemId: string) => ({ id: `u${itemId}${dayN}`, itemId, at: day(dayN), volume });
+
+	it('閾値 2・残量 1 で在庫わずかに出て、購入で残量 3 になると消える', () => {
+		const low = manual('電池', 2, { purchases: [purchase(0, 4, '電池')], usageEvents: [usage(10, 3, '電池')] });
+		const before = buildDashboard([low], settings, day(20));
+		expect(before[0].estimate.remaining).toBe(1);
+		expect(before[0].status).toBe('low');
+		expect(lowStockList(before).map((r) => r.item.id)).toEqual(['電池']);
+
+		low.purchases.push({ ...purchase(15, 2, '電池'), id: 'p-more' });
+		const after = buildDashboard([low], settings, day(20));
+		expect(after[0].estimate.remaining).toBe(3);
+		expect(after[0].status).toBe('ok');
+		expect(lowStockList(after)).toEqual([]);
+	});
+
+	it('残量がちょうど閾値なら在庫わずか、閾値 null なら出ない', () => {
+		const eq = manual('eq', 2, { purchases: [purchase(0, 2, 'eq')] });
+		const none = manual('none', null, { purchases: [purchase(0, 0.5, 'none')] });
+		const rows = buildDashboard([eq, none], settings, day(5));
+		expect(lowStockList(rows).map((r) => r.item.id)).toEqual(['eq']);
+	});
+
+	it('手動品目は残量 0 でも購入推奨リストに決して出ない', () => {
+		const empty = manual('empty', 2, { purchases: [purchase(0, 1, 'empty')], ranOutEvents: [{ id: 'r', itemId: 'empty', at: day(1) }] });
+		const rows = buildDashboard([empty], settings, day(400));
+		expect(rows[0].estimate.depletionAt).toBeNull();
+		expect(rows[0].estimate.recommendedPurchaseAt).toBeNull();
+		expect(shoppingList(rows)).toEqual([]);
+		expect(rows[0].status).toBe('low');
+	});
+
+	it('イベントが無ければ unknown、最終確認日は最後のイベント日時', () => {
+		expect(buildRow(manual('x', 2), settings, day(1)).status).toBe('unknown');
+		const row = buildRow(
+			manual('y', null, { purchases: [purchase(0, 5, 'y')], usageEvents: [usage(7, 1, 'y'), usage(30, 1, 'y')] }),
+			settings,
+			day(10)
+		);
+		expect(row.lastEventAt).toBe(day(7)); // 未来の使用は数えない
 	});
 });

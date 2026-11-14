@@ -5,7 +5,8 @@ import type {
 	RanOutEvent,
 	RemainingAdjustment,
 	StockItem,
-	Subscription
+	Subscription,
+	UsageEvent
 } from '#lib/types.js';
 import type {
 	AdjustmentInput,
@@ -18,11 +19,15 @@ import type {
 	StockItemInput,
 	ProductLinkInput,
 	SubscriptionInput,
-	OutboxOp
+	OutboxOp,
+	StockItemPatch,
+	UsageInput
 } from './types';
+import { CURRENT_REMAINING_REQUIRED, USAGE_NOT_MANUAL } from './types';
+import { switchNeedsCurrentRemaining } from '#lib/domain/estimate.js';
 
 const DB_NAME = 'stockify';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const SETTINGS_KEY = 'app';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -35,6 +40,7 @@ interface StockifyDB extends DBSchema {
 	purchases: { key: string; value: Purchase; indexes: { by_item: string } };
 	ranouts: { key: string; value: RanOutEvent; indexes: { by_item: string } };
 	adjustments: { key: string; value: RemainingAdjustment; indexes: { by_item: string } };
+	usages: { key: string; value: UsageEvent; indexes: { by_item: string } };
 	subscriptions: { key: string; value: Subscription; indexes: { by_item: string } };
 	productLinks: { key: string; value: ProductLink; indexes: { by_item: string } };
 	/** 会員のサーバー未送信の操作(ADR 0009)。ゲストでは使わない。 */
@@ -59,7 +65,7 @@ export class IndexedDbRepository implements Repository {
 			blocking(_current, _blocked, event) {
 				(event.target as IDBDatabase).close();
 			},
-			upgrade(db) {
+			upgrade(db, oldVersion, _newVersion, tx) {
 				if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
 				if (!db.objectStoreNames.contains('items')) db.createObjectStore('items', { keyPath: 'id' });
 				if (!db.objectStoreNames.contains('purchases')) db.createObjectStore('purchases', { keyPath: 'id' }).createIndex('by_item', 'itemId');
@@ -68,6 +74,16 @@ export class IndexedDbRepository implements Repository {
 				if (!db.objectStoreNames.contains('subscriptions')) db.createObjectStore('subscriptions', { keyPath: 'id' }).createIndex('by_item', 'itemId');
 				if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'seq', autoIncrement: true });
 				if (!db.objectStoreNames.contains('productLinks')) db.createObjectStore('productLinks', { keyPath: 'id' }).createIndex('by_item', 'itemId');
+				if (!db.objectStoreNames.contains('usages')) db.createObjectStore('usages', { keyPath: 'id' }).createIndex('by_item', 'itemId');
+				// v4: 既存の品目は推定モード・閾値なし(ADR 0013)。
+				if (oldVersion > 0 && oldVersion < 4) {
+					void (async () => {
+						for (let c = await tx.objectStore('items').openCursor(); c; c = await c.continue()) {
+							const v = c.value;
+							await c.update({ ...v, trackingMode: v.trackingMode ?? 'estimated', lowStockThreshold: v.lowStockThreshold ?? null });
+						}
+					})();
+				}
 			}
 		});
 	}
@@ -108,23 +124,33 @@ export class IndexedDbRepository implements Repository {
 		return item;
 	}
 
-	async updateItem(id: string, patch: Partial<StockItemInput>): Promise<StockItem> {
+	async updateItem(id: string, { currentRemaining, adjustmentId, ...patch }: StockItemPatch): Promise<StockItem> {
 		const db = await this.#dbPromise;
 		const existing = await db.get('items', id);
 		if (!existing) throw new Error(`品目が見つかりません: ${id}`);
+		// 推定 → 手動の切替は実残量を新しいアンカーにする(ADR 0013)。
+		const anchor = switchNeedsCurrentRemaining(existing.trackingMode, patch.trackingMode);
+		if (anchor && currentRemaining === undefined) throw new Error(CURRENT_REMAINING_REQUIRED);
 		const updated: StockItem = { ...existing, ...patch };
-		await db.put('items', updated);
+		const tx = db.transaction(['items', 'adjustments'], 'readwrite');
+		await tx.objectStore('items').put(updated);
+		if (anchor) {
+			await tx
+				.objectStore('adjustments')
+				.put({ id: adjustmentId ?? newId(), itemId: id, at: Date.now(), remaining: currentRemaining! });
+		}
+		await tx.done;
 		return updated;
 	}
 
 	async deleteItem(id: string): Promise<void> {
 		const db = await this.#dbPromise;
 		const tx = db.transaction(
-			['items', 'purchases', 'ranouts', 'adjustments', 'subscriptions', 'productLinks'],
+			['items', 'purchases', 'ranouts', 'adjustments', 'usages', 'subscriptions', 'productLinks'],
 			'readwrite'
 		);
 		await tx.objectStore('items').delete(id);
-		for (const store of ['purchases', 'ranouts', 'adjustments', 'subscriptions', 'productLinks'] as const) {
+		for (const store of ['purchases', 'ranouts', 'adjustments', 'usages', 'subscriptions', 'productLinks'] as const) {
 			const keys = await tx.objectStore(store).index('by_item').getAllKeys(id);
 			for (const key of keys) await tx.objectStore(store).delete(key);
 		}
@@ -249,6 +275,21 @@ export class IndexedDbRepository implements Repository {
 		await db.delete('adjustments', id);
 	}
 
+	async createUsageEvent(input: UsageInput): Promise<UsageEvent> {
+		const db = await this.#dbPromise;
+		const item = await db.get('items', input.itemId);
+		if (!item) throw new Error(`品目が見つかりません: ${input.itemId}`);
+		if (item.trackingMode !== 'manual') throw new Error(USAGE_NOT_MANUAL);
+		const usage: UsageEvent = { id: newId(), ...input };
+		await db.put('usages', usage);
+		return usage;
+	}
+
+	async deleteUsageEvent(id: string): Promise<void> {
+		const db = await this.#dbPromise;
+		await db.delete('usages', id);
+	}
+
 	async listSubscriptions(itemId: string): Promise<Subscription[]> {
 		const db = await this.#dbPromise;
 		return db.getAllFromIndex('subscriptions', 'by_item', itemId);
@@ -282,24 +323,26 @@ export class IndexedDbRepository implements Repository {
 		const db = await this.#dbPromise;
 		const item = await db.get('items', itemId);
 		if (!item) return null;
-		const [productLinks, purchases, ranOutEvents, adjustments, subscriptions] = await Promise.all([
+		const [productLinks, purchases, ranOutEvents, adjustments, usageEvents, subscriptions] = await Promise.all([
 			db.getAllFromIndex('productLinks', 'by_item', itemId),
 			db.getAllFromIndex('purchases', 'by_item', itemId),
 			db.getAllFromIndex('ranouts', 'by_item', itemId),
 			db.getAllFromIndex('adjustments', 'by_item', itemId),
+			db.getAllFromIndex('usages', 'by_item', itemId),
 			db.getAllFromIndex('subscriptions', 'by_item', itemId)
 		]);
-		return { item, productLinks: productLinks.sort((a, b) => a.position - b.position), purchases, ranOutEvents, adjustments, subscriptions };
+		return { item, productLinks: productLinks.sort((a, b) => a.position - b.position), purchases, ranOutEvents, adjustments, usageEvents, subscriptions };
 	}
 
 	async listBundles(): Promise<ItemBundle[]> {
 		const db = await this.#dbPromise;
-		const [items, productLinks, purchases, ranOutEvents, adjustments, subscriptions] = await Promise.all([
+		const [items, productLinks, purchases, ranOutEvents, adjustments, usageEvents, subscriptions] = await Promise.all([
 			db.getAll('items'),
 			db.getAll('productLinks'),
 			db.getAll('purchases'),
 			db.getAll('ranouts'),
 			db.getAll('adjustments'),
+			db.getAll('usages'),
 			db.getAll('subscriptions')
 		]);
 		return items.map((item) => ({
@@ -308,13 +351,14 @@ export class IndexedDbRepository implements Repository {
 			purchases: purchases.filter((p) => p.itemId === item.id),
 			ranOutEvents: ranOutEvents.filter((e) => e.itemId === item.id),
 			adjustments: adjustments.filter((a) => a.itemId === item.id),
+			usageEvents: usageEvents.filter((u) => u.itemId === item.id),
 			subscriptions: subscriptions.filter((s) => s.itemId === item.id)
 		}));
 	}
 
 	async exportAll(): Promise<Snapshot> {
 		const db = await this.#dbPromise;
-		const [settings, items, productLinks, purchases, ranOutEvents, adjustments, subscriptions] =
+		const [settings, items, productLinks, purchases, ranOutEvents, adjustments, usageEvents, subscriptions] =
 			await Promise.all([
 				this.getSettings(),
 				db.getAll('items'),
@@ -322,9 +366,10 @@ export class IndexedDbRepository implements Repository {
 				db.getAll('purchases'),
 				db.getAll('ranouts'),
 				db.getAll('adjustments'),
+				db.getAll('usages'),
 				db.getAll('subscriptions')
 			]);
-		return { settings, items, productLinks, purchases, ranOutEvents, adjustments, subscriptions };
+		return { settings, items, productLinks, purchases, ranOutEvents, adjustments, usageEvents, subscriptions };
 	}
 
 	/**
@@ -333,7 +378,7 @@ export class IndexedDbRepository implements Repository {
 	 */
 	async replaceAll(snapshot: Snapshot): Promise<boolean> {
 		const db = await this.#dbPromise;
-		const stores = ['settings', 'items', 'purchases', 'ranouts', 'adjustments', 'subscriptions', 'productLinks'] as const;
+		const stores = ['settings', 'items', 'purchases', 'ranouts', 'adjustments', 'usages', 'subscriptions', 'productLinks'] as const;
 		const tx = db.transaction([...stores, 'outbox'], 'readwrite');
 		if ((await tx.objectStore('outbox').count()) > 0) {
 			tx.abort();
@@ -347,6 +392,7 @@ export class IndexedDbRepository implements Repository {
 			['purchases', snapshot.purchases],
 			['ranouts', snapshot.ranOutEvents],
 			['adjustments', snapshot.adjustments],
+			['usages', snapshot.usageEvents ?? []],
 			['subscriptions', snapshot.subscriptions],
 			['productLinks', snapshot.productLinks ?? []]
 		] as const;
@@ -379,7 +425,7 @@ export class IndexedDbRepository implements Repository {
 	async clearAll(): Promise<void> {
 		const db = await this.#dbPromise;
 		const tx = db.transaction(
-			['settings', 'items', 'purchases', 'ranouts', 'adjustments', 'subscriptions', 'productLinks'],
+			['settings', 'items', 'purchases', 'ranouts', 'adjustments', 'usages', 'subscriptions', 'productLinks'],
 			'readwrite'
 		);
 		for (const store of [
@@ -388,6 +434,7 @@ export class IndexedDbRepository implements Repository {
 			'purchases',
 			'ranouts',
 			'adjustments',
+			'usages',
 			'subscriptions'
 			, 'productLinks'
 		] as const) {

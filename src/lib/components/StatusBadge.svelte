@@ -7,13 +7,15 @@
 		unknown: '推定中',
 		ok: '十分',
 		restock: 'そろそろ購入',
-		depleted: '在庫切れ'
+		depleted: '在庫切れ',
+		low: '在庫わずか'
 	};
 	const color: Record<StockStatus, string> = {
 		unknown: 'var(--muted)',
 		ok: 'var(--ok)',
 		restock: 'var(--warn)',
-		depleted: 'var(--danger)'
+		depleted: 'var(--danger)',
+		low: 'var(--warn)'
 	};
 </script>
 

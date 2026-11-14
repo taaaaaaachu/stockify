@@ -20,7 +20,9 @@ describe('materializeDueSubscriptions', () => {
 			unit: 'ml',
 			category: null,
 			leadTimeDays: null,
-			provisionalDaysToDeplete: null
+			provisionalDaysToDeplete: null,
+			trackingMode: 'estimated',
+			lowStockThreshold: null
 		});
 		await repo.createSubscription({
 			itemId: item.id,
@@ -51,7 +53,9 @@ describe('materializeDueSubscriptions', () => {
 			unit: 'ml',
 			category: null,
 			leadTimeDays: null,
-			provisionalDaysToDeplete: null
+			provisionalDaysToDeplete: null,
+			trackingMode: 'estimated',
+			lowStockThreshold: null
 		});
 		await repo.createSubscription({
 			itemId: item.id,
@@ -75,7 +79,9 @@ describe('materializeDueSubscriptions', () => {
 			unit: 'ml',
 			category: null,
 			leadTimeDays: null,
-			provisionalDaysToDeplete: null
+			provisionalDaysToDeplete: null,
+			trackingMode: 'estimated',
+			lowStockThreshold: null
 		});
 		await repo.createSubscription({
 			itemId: item.id,

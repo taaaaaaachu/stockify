@@ -1,3 +1,4 @@
+import { error } from '@sveltejs/kit';
 import type { Snapshot } from '#lib/repo/types.js';
 import { normalizeProductLinkInput } from '#lib/productLinks.js';
 
@@ -50,6 +51,7 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 	)
 		return false;
 	if (snapshot.productLinks !== undefined && (!Array.isArray(snapshot.productLinks) || snapshot.productLinks.length > MAX_IMPORT_CHILDREN)) return false;
+	if (snapshot.usageEvents !== undefined && (!Array.isArray(snapshot.usageEvents) || snapshot.usageEvents.length > MAX_IMPORT_CHILDREN)) return false;
 
 	if (
 		snapshot.items.some((value) => {
@@ -66,7 +68,12 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 					parseNonNegativeNumber(item.leadTimeDays) === null) ||
 				(item.provisionalDaysToDeplete !== null &&
 					item.provisionalDaysToDeplete !== undefined &&
-					parseNonNegativeNumber(item.provisionalDaysToDeplete) === null)
+					parseNonNegativeNumber(item.provisionalDaysToDeplete) === null) ||
+				// 管理モードと閾値は旧データに無いため省略可(ADR 0013)。
+				(item.trackingMode !== undefined && item.trackingMode !== 'estimated' && item.trackingMode !== 'manual') ||
+				(item.lowStockThreshold !== null &&
+					item.lowStockThreshold !== undefined &&
+					parseNonNegativeNumber(item.lowStockThreshold) === null)
 			);
 		})
 	)
@@ -111,6 +118,17 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 				parseNonNegativeNumber(adjustment.remaining) === null
 			);
 		}) ||
+		((snapshot.usageEvents ?? []) as unknown[]).some((value) => {
+			if (!value || typeof value !== 'object') return true;
+			const usage = value as Record<string, unknown>;
+			return (
+				typeof usage.id !== 'string' ||
+				typeof usage.itemId !== 'string' ||
+				!itemIds.has(usage.itemId) ||
+				parseFiniteNumber(usage.at) === null ||
+				parsePositiveNumber(usage.volume) === null
+			);
+		}) ||
 		(snapshot.subscriptions as unknown[]).some((value) => {
 			if (!value || typeof value !== 'object') return true;
 			const subscription = value as Record<string, unknown>;
@@ -147,4 +165,10 @@ export function isValidSnapshot(value: unknown): value is Snapshot {
 		return false;
 
 	return true;
+}
+
+/** 管理モード(ADR 0013)。不正なら 400。 */
+export function parseTrackingMode(value: unknown): 'estimated' | 'manual' {
+	if (value === 'estimated' || value === 'manual') return value;
+	throw error(400, '管理モードが不正です。');
 }

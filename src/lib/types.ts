@@ -35,7 +35,22 @@ export interface StockItem {
 	 * 履歴が貯まる前のブートストラップ用。null なら未設定。
 	 */
 	provisionalDaysToDeplete: number | null;
+	/** 残量の管理モード(ADR 0013)。既定は推定モード。 */
+	trackingMode: TrackingMode;
+	/**
+	 * 手動モード用: 残量がこの値以下で「在庫わずか」とする。null なら閾値通知なし。
+	 * 推定モードでは使わない。
+	 */
+	lowStockThreshold: number | null;
 }
+
+/**
+ * 残量の管理モード(ADR 0013)。
+ * - estimated: 購入履歴から消費レートを推定し、残量・枯渇予想・購入推奨日を出す。
+ * - manual: 推定しない。残量は「アンカー + 購入 − 使用」の実数で、時間経過では減らない。
+ *   電池・電球・季節物など、たまにしか使わない品目向け。
+ */
+export type TrackingMode = 'estimated' | 'manual';
 
 /** 購入イベントの発生源。 */
 export type PurchaseSource = 'manual' | 'subscription';
@@ -79,6 +94,19 @@ export interface RemainingAdjustment {
 	at: number;
 	/** その時点の実測残量(品目の単位)。 */
 	remaining: number;
+}
+
+/**
+ * 使用イベント(「これだけ使った」)。手動モードの品目だけで記録する(ADR 0013)。
+ * その時点の残量から volume を差し引く(0 未満にはならない)。
+ */
+export interface UsageEvent {
+	id: ID;
+	itemId: ID;
+	/** 使用した日時(epoch ミリ秒)。 */
+	at: number;
+	/** 使用した量(品目の単位)。 */
+	volume: number;
 }
 
 /**

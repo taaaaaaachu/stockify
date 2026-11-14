@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
+import { openDB } from 'idb';
 import { IndexedDbRepository } from './indexeddb';
-import type { StockItemInput } from './types';
+import { CURRENT_REMAINING_REQUIRED, USAGE_NOT_MANUAL, type StockItemInput } from './types';
 
 const itemInput = (over: Partial<StockItemInput> = {}): StockItemInput => ({
 	name: '食器用洗剤',
@@ -10,6 +11,8 @@ const itemInput = (over: Partial<StockItemInput> = {}): StockItemInput => ({
 	category: 'キッチン',
 	leadTimeDays: null,
 	provisionalDaysToDeplete: 30,
+	trackingMode: 'estimated',
+	lowStockThreshold: null,
 	...over
 });
 
@@ -147,5 +150,51 @@ describe('IndexedDbRepository', () => {
 		expect((await repo.exportAll()).items).toHaveLength(1);
 		await repo.clearAll();
 		expect((await repo.exportAll()).items).toHaveLength(0);
+	});
+});
+
+describe('IndexedDbRepository: 手動モード(ADR 0013)', () => {
+	beforeEach(() => {
+		indexedDB = new IDBFactory();
+	});
+
+	it('推定 → 手動は currentRemaining 必須で、渡すと残量補正として記録する', async () => {
+		const repo = new IndexedDbRepository();
+		const item = await repo.createItem(itemInput());
+		await expect(repo.updateItem(item.id, { trackingMode: 'manual' })).rejects.toThrow(CURRENT_REMAINING_REQUIRED);
+		expect((await repo.getItem(item.id))?.trackingMode).toBe('estimated');
+
+		const updated = await repo.updateItem(item.id, { trackingMode: 'manual', currentRemaining: 4, adjustmentId: 'adj-1' });
+		expect(updated).not.toHaveProperty('currentRemaining');
+		expect(updated.trackingMode).toBe('manual');
+		expect(await repo.listAdjustments(item.id)).toMatchObject([{ id: 'adj-1', remaining: 4 }]);
+	});
+
+	it('使用は手動モードの品目にだけ記録でき、削除・カスケード削除される', async () => {
+		const repo = new IndexedDbRepository();
+		const est = await repo.createItem(itemInput());
+		await expect(repo.createUsageEvent({ itemId: est.id, at: 1, volume: 1 })).rejects.toThrow(USAGE_NOT_MANUAL);
+
+		const man = await repo.createItem(itemInput({ trackingMode: 'manual' }));
+		const u1 = await repo.createUsageEvent({ itemId: man.id, at: 1, volume: 1 });
+		await repo.createUsageEvent({ itemId: man.id, at: 2, volume: 2 });
+		await repo.deleteUsageEvent(u1.id);
+		expect((await repo.getBundle(man.id))?.usageEvents?.map((u) => u.volume)).toEqual([2]);
+		expect((await repo.exportAll()).usageEvents).toHaveLength(1);
+		await repo.deleteItem(man.id);
+		expect((await repo.exportAll()).usageEvents).toEqual([]);
+	});
+
+	it('v3 の DB を開くと既存の品目を推定モード・閾値なしにする', async () => {
+		const old = await openDB('stockify', 3, {
+			upgrade(db) {
+				db.createObjectStore('items', { keyPath: 'id' });
+			}
+		});
+		await old.put('items', { id: 'old', name: '旧品目', unit: 'ml', category: null, leadTimeDays: null, provisionalDaysToDeplete: 30 });
+		old.close();
+
+		const item = await new IndexedDbRepository().getItem('old');
+		expect(item).toMatchObject({ name: '旧品目', trackingMode: 'estimated', lowStockThreshold: null });
 	});
 });

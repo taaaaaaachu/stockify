@@ -8,6 +8,7 @@ import { buildDashboard, buildRow, shoppingList, type DashboardRow } from '#lib/
 import { isAcceptableNextDelivery, nextDeliveryAfterSkip } from '#lib/domain/subscription.js';
 import { dateInputToTimestamp, formatDaysUntil } from '#lib/format.js';
 import { normalizeProductLinkInput } from '#lib/productLinks.js';
+import { CURRENT_REMAINING_REQUIRED, USAGE_NOT_MANUAL } from '#lib/repo/types.js';
 
 /**
  * エージェント向けの MCP サーバー(ADR 0012)。1リクエストごとに、認証済みの接続の
@@ -19,7 +20,9 @@ const INSTRUCTIONS = `Stockify は洗剤やトイレットペーパーなど消�
 - 日々の使用量は記録しません。記録するのは「買った(record_purchase)」「空になった(record_ranout)」「今これくらい残っている(adjust_remaining)」です。
 - 内容量は品目の単位(ml・g・個など)での数値です。単位の変換はしません。
 - 日付は YYYY-MM-DD(Asia/Tokyo)で渡します。省略すると今です。未来の日付は、定期便の次回予定日にしか使えません。
-- 残量・枯渇予想日・購入推奨日は推定値です。status が restock / depleted の品目が買い物リストです。`;
+- 残量・枯渇予想日・購入推奨日は推定値です。status が restock / depleted の品目が買い物リストです。
+- trackingMode が manual(手動管理)の品目は推定しません。残量は「最後の補正(または初回購入)+ 購入 − 使用」の実数で、時間では減りません。使ったら record_usage で記録します。枯渇予想・購入推奨は出ず、残量が lowStockThreshold 以下になると status が low(在庫わずか)になります。
+- 推定 → 手動へ切り替えるときは update_item に currentRemaining(今の実際の残量)を必ず渡します。`;
 
 const id = z.string().min(1);
 const date = z
@@ -72,7 +75,10 @@ function rowView(row: DashboardRow) {
 		unit: row.item.unit,
 		category: row.item.category,
 		status: row.status,
+		trackingMode: row.item.trackingMode,
+		lowStockThreshold: row.item.lowStockThreshold,
 		remaining: e.remainingClamped,
+		lastEventAt: iso(row.lastEventAt),
 		ratePerDay: e.ratePerDay,
 		depletionAt: iso(e.depletionAt),
 		depletion: formatDaysUntil(row.daysUntilDepletion),
@@ -128,7 +134,7 @@ export function createMcpServer(db: Db, ctx: AgentContext, clock: () => number =
 		'get_item',
 		{
 			title: '品目の詳細',
-			description: '品目の推定と、購入・使い切り・残量補正・定期便・商品リンクの履歴を返す。',
+			description: '品目の推定と、購入・使い切り・残量補正・使用・定期便・商品リンクの履歴を返す。',
 			inputSchema: z.object({ itemId: id }),
 			annotations: READ
 		},
@@ -144,6 +150,7 @@ export function createMcpServer(db: Db, ctx: AgentContext, clock: () => number =
 				purchases: bundle.purchases.map((p) => ({ id: p.id, volume: p.volume, price: p.price, purchasedAt: iso(p.purchasedAt), source: p.source })),
 				ranouts: bundle.ranOutEvents.map((r) => ({ id: r.id, at: iso(r.at) })),
 				adjustments: bundle.adjustments.map((a) => ({ id: a.id, remaining: a.remaining, at: iso(a.at) })),
+				usages: (bundle.usageEvents ?? []).map((u) => ({ id: u.id, volume: u.volume, at: iso(u.at) })),
 				subscriptions: bundle.subscriptions.map((s) => ({ ...s, nextDeliveryAt: iso(s.nextDeliveryAt) })),
 				productLinks: bundle.productLinks ?? []
 			});
@@ -155,7 +162,12 @@ export function createMcpServer(db: Db, ctx: AgentContext, clock: () => number =
 	const itemFields = {
 		category: z.string().nullable().optional().describe('カテゴリ・保管場所(例: キッチン)'),
 		leadTimeDays: nonNegative.nullable().optional().describe('この品目のリードタイム(日)。null で世帯の既定値'),
-		provisionalDaysToDeplete: positive.nullable().optional().describe('仮の値: 最初の購入分を約何日で使い切るか')
+		provisionalDaysToDeplete: positive.nullable().optional().describe('仮の値: 最初の購入分を約何日で使い切るか'),
+		trackingMode: z
+			.enum(['estimated', 'manual'])
+			.optional()
+			.describe('管理モード。estimated=購入履歴から推定(既定)、manual=推定せず実数で管理(たまにしか使わない品目向け)'),
+		lowStockThreshold: nonNegative.nullable().optional().describe('手動モード: 残量がこの値以下で在庫わずか。null で通知なし')
 	};
 
 	server.registerTool(
@@ -172,7 +184,9 @@ export function createMcpServer(db: Db, ctx: AgentContext, clock: () => number =
 				unit: input.unit,
 				category: input.category?.trim() || null,
 				leadTimeDays: input.leadTimeDays ?? null,
-				provisionalDaysToDeplete: input.provisionalDaysToDeplete ?? null
+				provisionalDaysToDeplete: input.provisionalDaysToDeplete ?? null,
+				trackingMode: input.trackingMode ?? 'estimated',
+				lowStockThreshold: input.lowStockThreshold ?? null
 			});
 			return item ? ok(item) : fail(NO_ITEM);
 		}
@@ -182,15 +196,28 @@ export function createMcpServer(db: Db, ctx: AgentContext, clock: () => number =
 		'update_item',
 		{
 			title: '品目を変更',
-			description: '品目の名前・単位・カテゴリ・リードタイム・仮の値を変更する。渡した項目だけ変わる。',
-			inputSchema: z.object({ itemId: id, name: z.string().trim().min(1).optional(), unit: z.string().trim().min(1).optional(), ...itemFields }),
+			description:
+				'品目の名前・単位・カテゴリ・リードタイム・仮の値・管理モード・在庫わずかの閾値を変更する。渡した項目だけ変わる。' +
+				'推定 → 手動の切替では currentRemaining が必須で、その値を今の残量補正として記録する。',
+			inputSchema: z.object({
+				itemId: id,
+				name: z.string().trim().min(1).optional(),
+				unit: z.string().trim().min(1).optional(),
+				...itemFields,
+				currentRemaining: nonNegative.optional().describe('推定 → 手動の切替時に必須: 今の実際の残量')
+			}),
 			annotations: WRITE
 		},
 		async ({ itemId, category, ...rest }) => {
 			const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
 			if (category !== undefined) patch.category = category?.trim() || null;
-			const item = stock.updateItem(db, householdId, itemId, patch);
-			return item ? ok(item) : fail(NO_ITEM);
+			try {
+				const item = stock.updateItem(db, householdId, itemId, patch, clock());
+				return item ? ok(item) : fail(NO_ITEM);
+			} catch (e) {
+				if (e instanceof Error && e.message === CURRENT_REMAINING_REQUIRED) return fail(e.message);
+				throw e;
+			}
 		}
 	);
 
@@ -198,7 +225,7 @@ export function createMcpServer(db: Db, ctx: AgentContext, clock: () => number =
 		'delete_item',
 		{
 			title: '品目を削除',
-			description: '品目と、その購入・使い切り・残量補正・定期便・商品リンクをすべて削除する。元に戻せない。',
+			description: '品目と、その購入・使い切り・残量補正・使用・定期便・商品リンクをすべて削除する。元に戻せない。',
 			inputSchema: z.object({ itemId: id }),
 			annotations: DESTRUCTIVE
 		},
@@ -299,6 +326,33 @@ export function createMcpServer(db: Db, ctx: AgentContext, clock: () => number =
 		{ title: '残量補正を削除', description: '記録済みの残量補正を削除する。', inputSchema: z.object({ adjustmentId: id }), annotations: DESTRUCTIVE },
 		async ({ adjustmentId }) =>
 			stock.deleteAdjustment(db, householdId, adjustmentId) ? ok({ deleted: adjustmentId }) : fail('残量補正が見つかりません。')
+	);
+
+	server.registerTool(
+		'record_usage',
+		{
+			title: '使用を記録',
+			description: '手動モードの品目を使ったことを記録し、残量から差し引く(0 未満にはならない)。推定モードの品目には使えない。',
+			inputSchema: z.object({ itemId: id, volume: positive.describe('使った量(品目の単位)'), at: date.optional() }),
+			annotations: WRITE
+		},
+		async ({ itemId, volume, at: date }) => {
+			const at = pastDate(date, clock());
+			if (at === null) return fail(BAD_DATE);
+			try {
+				const u = stock.createUsageEvent(db, householdId, { itemId, at, volume });
+				return u ? ok({ ...u, at: iso(u.at) }) : fail(NO_ITEM);
+			} catch (e) {
+				if (e instanceof Error && e.message === USAGE_NOT_MANUAL) return fail(e.message);
+				throw e;
+			}
+		}
+	);
+
+	server.registerTool(
+		'delete_usage',
+		{ title: '使用を削除', description: '記録済みの使用を削除する。', inputSchema: z.object({ usageId: id }), annotations: DESTRUCTIVE },
+		async ({ usageId }) => (stock.deleteUsageEvent(db, householdId, usageId) ? ok({ deleted: usageId }) : fail('使用が見つかりません。'))
 	);
 
 	// --- 定期便 ---

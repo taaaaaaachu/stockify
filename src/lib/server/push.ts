@@ -6,7 +6,7 @@ import type { Db } from './db';
 import { pushSubscriptions, users, type PushSubscriptionRow } from './db/schema';
 import { listUserHouseholds } from './households';
 import { listBundles } from './stock';
-import { buildDashboard, shoppingList } from '#lib/domain/dashboard.js';
+import { buildDashboard, lowStockList, shoppingList } from '#lib/domain/dashboard.js';
 import { normalizeNotifyMinute, NOTIFY_SLOT_MINUTES } from '#lib/notify-time.js';
 
 export { normalizeNotifyMinute, NOTIFY_SLOT_MINUTES } from '#lib/notify-time.js';
@@ -115,6 +115,7 @@ export async function sendWebPush(
 /**
  * あるユーザーが「そろそろ買う」品目名を、所属する全世帯から集める。
  * 定期便で自動補充される品目は購入推奨の対象外(shoppingList が除外する)。
+ * 手動モードで在庫わずかの品目も含める(ADR 0013)。
  */
 export function dueItemNamesForUser(db: Db, userId: string, now: number): string[] {
 	const names: string[] = [];
@@ -122,8 +123,8 @@ export function dueItemNamesForUser(db: Db, userId: string, now: number): string
 		// 世帯ごとに通知をOFFにしていればその世帯の品目は集計しない。
 		if (!h.notifyEnabled) continue;
 		const bundles = listBundles(db, h.id);
-		const rows = shoppingList(buildDashboard(bundles, { defaultLeadTimeDays: h.defaultLeadTimeDays }, now));
-		names.push(...rows.map((r) => r.item.name));
+		const rows = buildDashboard(bundles, { defaultLeadTimeDays: h.defaultLeadTimeDays }, now);
+		names.push(...[...shoppingList(rows), ...lowStockList(rows)].map((r) => r.item.name));
 	}
 	return names;
 }

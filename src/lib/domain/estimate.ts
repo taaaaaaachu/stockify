@@ -1,4 +1,11 @@
-import type { Purchase, RanOutEvent, RemainingAdjustment, StockItem } from '#lib/types.js';
+import type {
+	Purchase,
+	RanOutEvent,
+	RemainingAdjustment,
+	StockItem,
+	TrackingMode,
+	UsageEvent
+} from '#lib/types.js';
 
 /** 1 日のミリ秒数。 */
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -26,6 +33,10 @@ export interface EstimateInput {
 	purchases: Purchase[];
 	ranOutEvents: RanOutEvent[];
 	adjustments: RemainingAdjustment[];
+	/** 管理モード(ADR 0013)。省略時は推定モード。 */
+	trackingMode?: TrackingMode;
+	/** 使用イベント。手動モードでだけ残量から差し引く(推定モードでは無視)。省略時は空。 */
+	usageEvents?: UsageEvent[];
 }
 
 /** 推定結果。データ不足で決まらない項目は null。 */
@@ -222,7 +233,11 @@ export interface RemainingWalk {
 
 type WalkEvent =
 	| { t: number; kind: 'add'; amount: number }
+	| { t: number; kind: 'sub'; amount: number }
 	| { t: number; kind: 'set'; value: number };
+
+/** 同時刻のイベントの処理順: add → sub → set。 */
+const KIND_ORDER: Record<WalkEvent['kind'], number> = { add: 0, sub: 1, set: 2 };
 
 /**
  * イベント(購入・使い切り・残量補正)を時系列にたどって残量を求める(ADR 0001 再々改訂)。
@@ -231,27 +246,34 @@ type WalkEvent =
  *   後から入ったイベントが、終わった区間の消費を書き換えない(遡及適用しない)。
  *   例外として、始点でレートが出せない区間(仮の値なしの初回区間など)は最初に推定できたレートで埋める。
  *   消費 0 にすると、補正するまで初回購入分が丸ごと残り続けるため。
- * - 購入は加算、使い切りは 0、残量補正は実測値に置き換える。同時刻は add → set の順。
+ * - 購入は加算、使い切りは 0、残量補正は実測値に置き換える。同時刻は add → sub → set の順。
+ * - 手動モード(ADR 0013)ではレートを常に 0 とし(時間経過で減らない)、使用イベントを減算する。
+ *   推定モードでは使用イベントを無視する。
  * - 区間の途中で 0 に達したらそこで消費を止め、その時刻を emptyAt に記録する。
  * - now より後のイベントは無視し、最後のイベントから now までも同じルールで消費する。
  */
 export function walkRemaining(input: EstimateInput, now: number): RemainingWalk | null {
+	const manual = input.trackingMode === 'manual';
 	const events: WalkEvent[] = [
 		...input.purchases.map((p) => ({ t: p.purchasedAt, kind: 'add' as const, amount: p.volume })),
 		...input.ranOutEvents.map((e) => ({ t: e.at, kind: 'set' as const, value: 0 })),
-		...input.adjustments.map((a) => ({ t: a.at, kind: 'set' as const, value: a.remaining }))
+		...input.adjustments.map((a) => ({ t: a.at, kind: 'set' as const, value: a.remaining })),
+		...(manual ? (input.usageEvents ?? []) : []).map((u) => ({ t: u.at, kind: 'sub' as const, amount: u.volume }))
 	].filter((e) => e.t <= now);
 	if (events.length === 0) return null;
 
-	events.sort((a, b) => a.t - b.t || (a.kind === 'add' ? 0 : 1) - (b.kind === 'add' ? 0 : 1));
+	events.sort((a, b) => a.t - b.t || KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
 
 	// 各イベント直後に始まる区間のレート(その時点までに確定している購入・使い切りだけから推定)。
+	// 手動モードは時間経過で消費しないので常に 0。
 	const rates = events.map((ev) =>
-		consumptionRatePerDay({
-			...input,
-			purchases: input.purchases.filter((p) => p.purchasedAt <= ev.t),
-			ranOutEvents: input.ranOutEvents.filter((e) => e.at <= ev.t)
-		})
+		manual
+			? 0
+			: consumptionRatePerDay({
+					...input,
+					purchases: input.purchases.filter((p) => p.purchasedAt <= ev.t),
+					ranOutEvents: input.ranOutEvents.filter((e) => e.at <= ev.t)
+				})
 	);
 	const firstKnownRate = rates.find((r) => r !== null) ?? 0;
 
@@ -279,9 +301,10 @@ export function walkRemaining(input: EstimateInput, now: number): RemainingWalk 
 		consumeUntil(ev.t);
 		points.push({ t: ev.t, remaining }); // イベント直前
 		if (ev.kind === 'add') remaining += ev.amount;
+		else if (ev.kind === 'sub') remaining = Math.max(0, remaining - ev.amount);
 		else remaining = Math.max(0, ev.value);
 		if (remaining > 0) emptyAt = null;
-		else if (ev.kind === 'set') emptyAt = ev.t;
+		else if (ev.kind !== 'add') emptyAt = ev.t;
 		points.push({ t: ev.t, remaining }); // イベント直後
 		rate = rates[i] ?? firstKnownRate;
 	}
@@ -301,8 +324,19 @@ export function walkRemaining(input: EstimateInput, now: number): RemainingWalk 
  * 枯渇予想日 = 残量 0 ならその到達時刻、正なら now + 残量 ÷ 最新レート(将来の定期便配送は織り込まない)。
  * 購入推奨日 = 枯渇予想日 − リードタイム(品目固有 > 全体既定)。
  *   ただし定期便の次回配送が枯渇予想日までに届くなら、自動補充される前提で null(ADR 0002 改訂)。
+ * 手動モード(ADR 0013)は推定しないため、残量だけを返しレート・枯渇予想・購入推奨日は常に null。
  */
 export function estimate(input: EstimateInput, now: number): Estimate {
+	if (input.trackingMode === 'manual') {
+		const remaining = walkRemaining(input, now)?.remaining ?? null;
+		return {
+			ratePerDay: null,
+			remaining,
+			remainingClamped: remaining,
+			depletionAt: null,
+			recommendedPurchaseAt: null
+		};
+	}
 	const ratePerDay = consumptionRatePerDay(input);
 	const walk = walkRemaining(input, now);
 
@@ -339,13 +373,14 @@ export function estimate(input: EstimateInput, now: number): Estimate {
 
 /** StockItem から EstimateInput の品目固有フィールドを埋めるヘルパ。 */
 export function estimateInputFromItem(
-	item: Pick<StockItem, 'leadTimeDays' | 'provisionalDaysToDeplete'>,
+	item: Pick<StockItem, 'leadTimeDays' | 'provisionalDaysToDeplete' | 'trackingMode'>,
 	data: {
 		defaultLeadTimeDays: number;
 		nextSubscriptionDeliveryAt: number | null;
 		purchases: Purchase[];
 		ranOutEvents: RanOutEvent[];
 		adjustments: RemainingAdjustment[];
+		usageEvents?: UsageEvent[];
 	}
 ): EstimateInput {
 	return {
@@ -355,6 +390,16 @@ export function estimateInputFromItem(
 		nextSubscriptionDeliveryAt: data.nextSubscriptionDeliveryAt,
 		purchases: data.purchases,
 		ranOutEvents: data.ranOutEvents,
-		adjustments: data.adjustments
+		adjustments: data.adjustments,
+		trackingMode: item.trackingMode,
+		usageEvents: data.usageEvents ?? []
 	};
+}
+
+/**
+ * 管理モードの切替に、その時点の実残量(新しいアンカー)が要るか(ADR 0013)。
+ * 推定 → 手動は推定残量を引き継がないため必須。手動 → 推定や変更なしは不要。
+ */
+export function switchNeedsCurrentRemaining(from: TrackingMode, to: TrackingMode | undefined): boolean {
+	return from !== 'manual' && to === 'manual';
 }

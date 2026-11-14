@@ -4,7 +4,8 @@ import type {
 	RanOutEvent,
 	RemainingAdjustment,
 	StockItem,
-	Subscription
+	Subscription,
+	UsageEvent
 } from '#lib/types.js';
 
 /**
@@ -35,7 +36,20 @@ export interface StockItemInput {
 	category: string | null;
 	leadTimeDays: number | null;
 	provisionalDaysToDeplete: number | null;
+	trackingMode: StockItem['trackingMode'];
+	lowStockThreshold: number | null;
 }
+
+/**
+ * 品目の変更。推定 → 手動へ切り替えるときは currentRemaining(実残量)が必須で、
+ * 切替と同時に残量補正として記録する(ADR 0013)。adjustmentId はその補正の ID(省略時は採番)。
+ */
+export type StockItemPatch = Partial<StockItemInput> & { currentRemaining?: number; adjustmentId?: string };
+
+/** 推定 → 手動の切替で currentRemaining が無いときのエラー文言。 */
+export const CURRENT_REMAINING_REQUIRED = '手動モードへ切り替えるには、今の残量(currentRemaining)が必要です。';
+/** 推定モードの品目へ使用を記録しようとしたときのエラー文言。 */
+export const USAGE_NOT_MANUAL = '使用は手動モードの品目にだけ記録できます。';
 
 export interface ProductLinkInput {
 	itemId: string;
@@ -66,6 +80,13 @@ export interface AdjustmentInput {
 	remaining: number;
 }
 
+/** 新規使用イベントの入力。 */
+export interface UsageInput {
+	itemId: string;
+	at: number;
+	volume: number;
+}
+
 /** 新規定期便の入力。 */
 export interface SubscriptionInput {
 	itemId: string;
@@ -83,6 +104,8 @@ export interface ItemBundle {
 	purchases: Purchase[];
 	ranOutEvents: RanOutEvent[];
 	adjustments: RemainingAdjustment[];
+	/** 使用イベント(手動モードの品目のみ)。旧データには無い。 */
+	usageEvents?: UsageEvent[];
 	subscriptions: Subscription[];
 }
 
@@ -94,6 +117,7 @@ export interface Snapshot {
 	purchases: Purchase[];
 	ranOutEvents: RanOutEvent[];
 	adjustments: RemainingAdjustment[];
+	usageEvents?: UsageEvent[];
 	subscriptions: Subscription[];
 }
 
@@ -114,8 +138,9 @@ export interface Repository {
 	listItems(): Promise<StockItem[]>;
 	getItem(id: string): Promise<StockItem | null>;
 	createItem(input: StockItemInput): Promise<StockItem>;
-	updateItem(id: string, patch: Partial<StockItemInput>): Promise<StockItem>;
-	/** 品目を削除する。配下の購入・使い切り・補正・定期便もカスケード削除する。 */
+	/** 推定 → 手動の切替で currentRemaining が無ければ CURRENT_REMAINING_REQUIRED で例外。 */
+	updateItem(id: string, patch: StockItemPatch): Promise<StockItem>;
+	/** 品目を削除する。配下の購入・使い切り・補正・使用・定期便もカスケード削除する。 */
 	deleteItem(id: string): Promise<void>;
 
 	listProductLinks(itemId: string): Promise<ProductLink[]>;
@@ -139,6 +164,10 @@ export interface Repository {
 	listAdjustments(itemId: string): Promise<RemainingAdjustment[]>;
 	createAdjustment(input: AdjustmentInput): Promise<RemainingAdjustment>;
 	deleteAdjustment(id: string): Promise<void>;
+
+	/** 推定モードの品目なら USAGE_NOT_MANUAL で例外。 */
+	createUsageEvent(input: UsageInput): Promise<UsageEvent>;
+	deleteUsageEvent(id: string): Promise<void>;
 
 	listSubscriptions(itemId: string): Promise<Subscription[]>;
 	createSubscription(input: SubscriptionInput): Promise<Subscription>;

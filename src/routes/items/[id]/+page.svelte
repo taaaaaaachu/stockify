@@ -15,6 +15,7 @@
 		dateInputToTimestamp
 	} from '#lib/format.js';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
+	import ModeBadge from '#lib/components/ModeBadge.svelte';
 	import RemainingBar from '#lib/components/RemainingBar.svelte';
 	import HistoryChart from '#lib/components/HistoryChart.svelte';
 	import ProductLinksEditor from '#lib/components/ProductLinksEditor.svelte';
@@ -32,7 +33,8 @@
 						nextSubscriptionDeliveryAt: null,
 						purchases: bundle.purchases,
 						ranOutEvents: bundle.ranOutEvents,
-						adjustments: bundle.adjustments
+						adjustments: bundle.adjustments,
+						usageEvents: bundle.usageEvents
 					}),
 					store.now
 				)
@@ -46,6 +48,8 @@
 	// 開けなくなるため、必ずコピーしてから並べ替える。
 	const ranOutsDesc = $derived(bundle ? [...bundle.ranOutEvents].sort((a, b) => b.at - a.at) : []);
 	const adjustmentsDesc = $derived(bundle ? [...bundle.adjustments].sort((a, b) => b.at - a.at) : []);
+	const usagesDesc = $derived(bundle ? [...(bundle.usageEvents ?? [])].sort((a, b) => b.at - a.at) : []);
+	const manual = $derived(bundle?.item.trackingMode === 'manual');
 	const activeSub = $derived(bundle?.subscriptions.find((s) => !s.paused) ?? bundle?.subscriptions[0]);
 
 	// type="number" の bind:value は数値化されるため、数値・文字列どちらも受ける。
@@ -122,6 +126,16 @@
 		adjRemaining = '';
 	}
 
+	// --- 使用(手動モードのみ、ADR 0013) ---
+	let usageVolume = $state('');
+	async function addUsage(e: SubmitEvent) {
+		e.preventDefault();
+		const v = numOrNull(usageVolume);
+		if (v === null || v <= 0) return;
+		await store.addUsage({ itemId: id, at: Date.now(), volume: v });
+		usageVolume = '';
+	}
+
 	async function markRanOut() {
 		await store.markRanOut(id, Date.now());
 	}
@@ -178,6 +192,12 @@
 	let eCategory = $state('');
 	let eLead = $state('');
 	let eProv = $state('');
+	let eMode = $state<'estimated' | 'manual'>('estimated');
+	let eThreshold = $state('');
+	// 推定 → 手動の切替時だけ入力する実残量(推定残量は引き継がない。ADR 0013)。
+	let eCurrent = $state('');
+	let editError = $state('');
+	const switchingToManual = $derived(bundle?.item.trackingMode !== 'manual' && eMode === 'manual');
 	function startEdit() {
 		if (!bundle) return;
 		eName = bundle.item.name;
@@ -188,17 +208,30 @@
 			bundle.item.provisionalDaysToDeplete === null
 				? ''
 				: String(bundle.item.provisionalDaysToDeplete);
+		eMode = bundle.item.trackingMode;
+		eThreshold = bundle.item.lowStockThreshold === null ? '' : String(bundle.item.lowStockThreshold);
+		eCurrent = '';
+		editError = '';
 		editing = true;
 	}
 	async function saveEdit(e: SubmitEvent) {
 		e.preventDefault();
 		if (eName.trim() === '' || eUnit.trim() === '') return;
+		editError = '';
+		const current = numOrNull(eCurrent);
+		if (switchingToManual && (current === null || current < 0)) {
+			editError = '手動に切り替えるには、今の残量を 0 以上で入力してください。';
+			return;
+		}
 		await store.editItem(id, {
 			name: eName.trim(),
 			unit: eUnit.trim(),
 			category: eCategory.trim() === '' ? null : eCategory.trim(),
 			leadTimeDays: numOrNull(eLead),
-			provisionalDaysToDeplete: numOrNull(eProv)
+			provisionalDaysToDeplete: numOrNull(eProv),
+			trackingMode: eMode,
+			lowStockThreshold: numOrNull(eThreshold),
+			...(switchingToManual ? { currentRemaining: current! } : {})
 		});
 		editing = false;
 	}
@@ -230,9 +263,21 @@
 			{#if bundle.item.category}
 				<span style="font-size:0.8rem; color:var(--muted);">{bundle.item.category}</span>
 			{/if}
+			<ModeBadge mode={bundle.item.trackingMode} />
 			<span style="margin-left:auto;"><StatusBadge status={row.status} /></span>
 		</div>
 		<RemainingBar fraction={row.remainingFraction} status={row.status} />
+		{#if manual}
+		<!-- 手動モードは推定しない: 実数の残りと最終確認日だけ(ADR 0013)。 -->
+		<div style="display:grid; grid-template-columns:repeat(2,1fr); gap:0.4rem; margin-top:0.7rem; font-size:0.9rem;">
+			<div>残り: <b>{formatQuantity(row.estimate.remainingClamped, bundle.item.unit)}</b></div>
+			<div>最終確認: <b>{formatDate(row.lastEventAt)}</b></div>
+			<div>
+				在庫わずか:
+				<b>{bundle.item.lowStockThreshold === null ? '通知しない' : `${formatQuantity(bundle.item.lowStockThreshold, bundle.item.unit)} 以下`}</b>
+			</div>
+		</div>
+		{:else}
 		<div style="display:grid; grid-template-columns:repeat(2,1fr); gap:0.4rem; margin-top:0.7rem; font-size:0.9rem;">
 			<div>推定残量: <b>{formatQuantity(row.estimate.remainingClamped, bundle.item.unit)}</b></div>
 			<div>
@@ -253,6 +298,7 @@
 				</b>
 			</div>
 		</div>
+		{/if}
 	</div>
 
 	<!-- 履歴グラフ -->
@@ -264,6 +310,23 @@
 	<!-- クイック操作 -->
 	<div style={sectionStyle}>
 		<h2 style="margin:0 0 0.5rem; font-size:1rem;">記録する</h2>
+		{#if manual}
+			<form onsubmit={addUsage} style="display:flex; gap:0.4rem; align-items:center; margin-bottom:0.8rem;">
+				<input
+					bind:value={usageVolume}
+					type="number"
+					step="any"
+					min="0"
+					placeholder="使った量"
+					style="width:7rem;"
+				/>
+				<button
+					type="submit"
+					style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.5rem 0.8rem; cursor:pointer;"
+					>使用を記録</button
+				>
+			</form>
+		{/if}
 		<div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.8rem;">
 			<button
 				onclick={markRanOut}
@@ -431,12 +494,18 @@
 				{/each}
 			</ul>
 		{/if}
-		{#if bundle.ranOutEvents.length > 0 || bundle.adjustments.length > 0}
+		{#if bundle.ranOutEvents.length > 0 || bundle.adjustments.length > 0 || usagesDesc.length > 0}
 			<div style="margin-top:0.6rem; font-size:0.85rem; color:var(--muted);">
 				{#each ranOutsDesc as e (e.id)}
 					<div style="display:flex; gap:0.5rem; align-items:center;">
 						<span>{formatDate(e.at)} 空になった</span>
 						<button onclick={() => store.removeRanOut(e.id)} style="border:none; background:none; color:var(--danger); cursor:pointer;" aria-label="削除">✕</button>
+					</div>
+				{/each}
+				{#each usagesDesc as u (u.id)}
+					<div style="display:flex; gap:0.5rem; align-items:center;">
+						<span>{formatDate(u.at)} 使用 {formatQuantity(u.volume, bundle.item.unit)}</span>
+						<button onclick={() => store.removeUsage(u.id)} style="border:none; background:none; color:var(--danger); cursor:pointer;" aria-label="削除">✕</button>
 					</div>
 				{/each}
 				{#each adjustmentsDesc as a (a.id)}
@@ -472,7 +541,25 @@
 					</datalist>
 					<label style={inputRow}><span style="font-size:0.85rem;">リードタイム(日)</span><input bind:value={eLead} type="number" step="any" min="0" placeholder="既定" /></label>
 				</div>
-				<label style={inputRow}><span style="font-size:0.85rem;">仮の値: 約何日で使い切る</span><input bind:value={eProv} type="number" step="any" min="0" /></label>
+				<fieldset style="border:1px solid var(--border); border-radius:0.5rem; padding:0.6rem;">
+					<legend style="padding:0 0.3rem; font-size:0.85rem; color:var(--muted);">管理モード</legend>
+					<label style="display:flex; gap:0.4rem; align-items:center;"><input type="radio" bind:group={eMode} value="estimated" style="width:auto;" />推定</label>
+					<label style="display:flex; gap:0.4rem; align-items:center;"><input type="radio" bind:group={eMode} value="manual" style="width:auto;" />手動(使った分を記録して実数で管理)</label>
+				</fieldset>
+				{#if eMode === 'manual'}
+					<div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+						{#if switchingToManual}
+							<label style={inputRow}><span style="font-size:0.85rem;">今の残量(必須)</span><input bind:value={eCurrent} type="number" step="any" min="0" required placeholder="実際に数えた量" /></label>
+						{/if}
+						<label style={inputRow}><span style="font-size:0.85rem;">在庫わずかの閾値</span><input bind:value={eThreshold} type="number" step="any" min="0" placeholder="空欄なら通知しない" /></label>
+					</div>
+					{#if switchingToManual}
+						<small style="color:var(--muted);">推定残量は引き継がず、入力した残量を基準に「購入 − 使用」で管理します。</small>
+					{/if}
+				{:else}
+					<label style={inputRow}><span style="font-size:0.85rem;">仮の値: 約何日で使い切る</span><input bind:value={eProv} type="number" step="any" min="0" /></label>
+				{/if}
+				{#if editError}<p style="color:var(--danger); margin:0;">{editError}</p>{/if}
 				<div style="display:flex; gap:0.5rem;">
 					<button type="submit" style="background:var(--accent); color:#fff; border:none; border-radius:0.5rem; padding:0.5rem 0.9rem; cursor:pointer;">保存</button>
 					<button type="button" onclick={() => (editing = false)} style="border:1px solid var(--border); background:var(--card); border-radius:0.5rem; padding:0.5rem 0.9rem; cursor:pointer;">やめる</button>
@@ -480,9 +567,11 @@
 			</form>
 		{:else}
 		<div style="font-size:0.9rem; color:var(--muted); margin-top:0.4rem;">
-				単位 {bundle.item.unit} ・ リードタイム {bundle.item.leadTimeDays === null
-					? `既定(${store.settings.defaultLeadTimeDays}日)`
-					: `${bundle.item.leadTimeDays}日`}
+				単位 {bundle.item.unit} ・ {manual
+					? '手動管理'
+					: `リードタイム ${bundle.item.leadTimeDays === null
+						? `既定(${store.settings.defaultLeadTimeDays}日)`
+						: `${bundle.item.leadTimeDays}日`}`}
 		</div>
 		<h3 style="font-size:0.95rem; margin:0.8rem 0 0;">商品リンク</h3>
 		<ProductLinksEditor itemId={id} links={bundle.productLinks ?? []} />
