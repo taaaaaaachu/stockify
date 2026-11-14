@@ -18,6 +18,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		purchases: body.purchases ?? [],
 		ranOutEvents: body.ranOutEvents ?? [],
 		adjustments: body.adjustments ?? [],
+		usageEvents: body.usageEvents ?? [],
 		subscriptions: body.subscriptions ?? []
 	};
 	return Response.json(stock.importSnapshot(db, householdId, snapshot));

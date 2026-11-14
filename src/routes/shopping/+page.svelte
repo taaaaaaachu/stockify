@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { store } from '#lib/app/store.svelte.js';
-	import { buildDashboard, shoppingList } from '#lib/domain/dashboard.js';
-	import { formatDepletion, formatQuantity } from '#lib/format.js';
+	import { buildDashboard, lowStockList, shoppingList } from '#lib/domain/dashboard.js';
+	import { formatDate, formatDepletion, formatQuantity } from '#lib/format.js';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import { productLinkLabel } from '#lib/productLinks.js';
 
-	const rows = $derived(shoppingList(buildDashboard(store.bundles, store.settings, store.now)));
+	const dashboard = $derived(buildDashboard(store.bundles, store.settings, store.now));
+	// 購入推奨(推定モード)のあとに、在庫わずか(手動モード、ADR 0013)を並べる。
+	const rows = $derived([...shoppingList(dashboard), ...lowStockList(dashboard)]);
 
 	let busy = $state<string | null>(null);
 
@@ -34,7 +36,7 @@
 
 <h1 style="font-size:1.3rem;">買い物リスト</h1>
 <p style="color:var(--muted); font-size:0.9rem;">
-	購入推奨日に達した品目です(定期便で自動補充される品目は除く)。
+	購入推奨日に達した品目と、手動管理で在庫わずかの品目です(定期便で自動補充される品目は除く)。
 </p>
 
 {#if !store.loaded}
@@ -60,10 +62,14 @@
 						<a href={row.defaultProductLink.url} target="_blank" rel="noopener noreferrer" style="display:inline-block; color:var(--accent); font-size:0.85rem; margin-top:0.3rem;">購入先: {productLinkLabel(row.defaultProductLink)}</a>
 					{/if}
 					<div style="font-size:0.85rem; color:var(--muted); margin-top:0.2rem;">
-						残量 {formatQuantity(row.estimate.remainingClamped, row.item.unit)} ・ 枯渇 {formatDepletion(
-							row.estimate.depletionAt,
-							store.now
-						)}
+						{#if row.item.trackingMode === 'manual'}
+							残り {formatQuantity(row.estimate.remainingClamped, row.item.unit)} ・ 最終確認 {formatDate(row.lastEventAt)}
+						{:else}
+							残量 {formatQuantity(row.estimate.remainingClamped, row.item.unit)} ・ 枯渇 {formatDepletion(
+								row.estimate.depletionAt,
+								store.now
+							)}
+						{/if}
 					</div>
 				</div>
 				<button

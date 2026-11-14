@@ -13,7 +13,9 @@ const item = (id: string, name: string): StockItem => ({
 	unit: 'ml',
 	category: null,
 	leadTimeDays: null,
-	provisionalDaysToDeplete: 30
+	provisionalDaysToDeplete: 30,
+	trackingMode: 'estimated',
+	lowStockThreshold: null
 });
 
 const emptySnapshot = (): Snapshot => ({
@@ -83,7 +85,9 @@ const input = (name: string) => ({
 	unit: '個',
 	category: null,
 	leadTimeDays: null,
-	provisionalDaysToDeplete: null
+	provisionalDaysToDeplete: null,
+	trackingMode: 'estimated' as const,
+	lowStockThreshold: null
 });
 const names = async (repo: MemberRepository) => (await repo.listItems()).map((i) => i.name).sort();
 
@@ -241,5 +245,48 @@ describe('IndexedDbRepository.replaceAll', () => {
 		await repo.enqueue({ method: 'POST', path: '/api/items', at: 1, label: 'x' });
 		expect(await repo.replaceAll(emptySnapshot())).toBe(false);
 		expect((await repo.listItems()).map((i) => i.name)).toEqual(['ローカル']);
+	});
+});
+
+describe('MemberRepository: 手動モード(ADR 0013)', () => {
+	beforeEach(() => {
+		indexedDB = new IDBFactory();
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('推定 → 手動の切替は、端末で記録した残量補正と同じ ID をサーバーへ送る', async () => {
+		const server = fakeServer();
+		server.online = false;
+		const repo = new MemberRepository('u1', 'h1');
+		const created = await repo.createItem(input('電池'));
+		await repo.updateItem(created.id, { trackingMode: 'manual', currentRemaining: 6 });
+		const [adj] = await repo.listAdjustments(created.id);
+		expect(adj.remaining).toBe(6);
+		await repo.sync(); // オフライン中に走った同期を終わらせる
+
+		server.online = true;
+		await repo.sync();
+		const patch = server.sent.find((s) => s.method === 'PATCH');
+		expect(patch?.body).toEqual({ trackingMode: 'manual', currentRemaining: 6, adjustmentId: adj.id });
+	});
+
+	it('使用の記録・削除を送る', async () => {
+		const server = fakeServer();
+		server.online = false;
+		const repo = new MemberRepository('u1', 'h1');
+		const created = await repo.createItem({ ...input('電球'), trackingMode: 'manual' });
+		const u = await repo.createUsageEvent({ itemId: created.id, at: 1, volume: 2 });
+		await repo.deleteUsageEvent(u.id);
+		await repo.sync(); // オフライン中に走った同期を終わらせる
+		server.online = true;
+		await repo.sync();
+		expect(server.sent.map((s) => `${s.method} ${s.url}`)).toEqual([
+			'POST /api/items',
+			'POST /api/usages',
+			`DELETE /api/usages/${u.id}`
+		]);
+		expect(server.sent[1].body).toEqual({ itemId: created.id, at: 1, volume: 2, id: u.id });
 	});
 });

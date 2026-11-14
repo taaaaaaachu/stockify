@@ -11,7 +11,9 @@ export type StockStatus =
 	/** 購入推奨日に達した(そろそろ買う)。 */
 	| 'restock'
 	/** 推定残量が尽きた。 */
-	| 'depleted';
+	| 'depleted'
+	/** 手動モードで、残量が在庫わずかの閾値以下(ADR 0013)。 */
+	| 'low';
 
 /** ダッシュボード 1 行分。 */
 export interface DashboardRow {
@@ -27,6 +29,8 @@ export interface DashboardRow {
 	capacity: number | null;
 	/** 残量の割合(0〜1)。capacity か残量が無ければ null。 */
 	remainingFraction: number | null;
+	/** 最後のイベント(購入・使い切り・補正・使用)の日時。手動モードの「最終確認日」。無ければ null。 */
+	lastEventAt: number | null;
 }
 
 function hasActiveSubscription(bundle: ItemBundle): boolean {
@@ -44,6 +48,16 @@ function earliestActiveDeliveryAt(bundle: ItemBundle): number | null {
 		if (earliest === null || s.nextDeliveryAt < earliest) earliest = s.nextDeliveryAt;
 	}
 	return earliest;
+}
+
+/**
+ * 手動モードの状態(ADR 0013)。推定しないので restock/depleted にはならない
+ * (購入推奨リストに決して出ない)。閾値以下なら low。
+ */
+function manualStatusOf(remaining: number | null, threshold: number | null): StockStatus {
+	if (remaining === null) return 'unknown';
+	if (threshold !== null && remaining <= threshold) return 'low';
+	return 'ok';
 }
 
 function statusOf(estimate: Estimate, now: number): StockStatus {
@@ -64,7 +78,8 @@ export function buildRow(bundle: ItemBundle, settings: AppSettings, now: number)
 		nextSubscriptionDeliveryAt: earliestActiveDeliveryAt(bundle),
 		purchases: bundle.purchases,
 		ranOutEvents: bundle.ranOutEvents,
-		adjustments: bundle.adjustments
+		adjustments: bundle.adjustments,
+		usageEvents: bundle.usageEvents
 	});
 	const est = estimate(input, now);
 	const daysUntilDepletion =
@@ -79,15 +94,30 @@ export function buildRow(bundle: ItemBundle, settings: AppSettings, now: number)
 			? Math.min(1, est.remainingClamped / capacity)
 			: null;
 
+	// 履歴が長くても引数の上限に当たらないよう、spread ではなく畳み込みで求める。
+	const lastEventAt = [
+		bundle.purchases.map((p) => p.purchasedAt),
+		bundle.ranOutEvents.map((e) => e.at),
+		bundle.adjustments.map((a) => a.at),
+		(bundle.usageEvents ?? []).map((u) => u.at)
+	]
+		.flat()
+		.filter((t) => t <= now)
+		.reduce((max, t) => Math.max(max, t), -Infinity);
+
 	return {
 		item: bundle.item,
 		defaultProductLink: bundle.productLinks?.[0] ?? null,
 		estimate: est,
 		hasActiveSubscription: active,
-		status: statusOf(est, now),
+		status:
+			bundle.item.trackingMode === 'manual'
+				? manualStatusOf(est.remaining, bundle.item.lowStockThreshold)
+				: statusOf(est, now),
 		daysUntilDepletion,
 		capacity,
-		remainingFraction
+		remainingFraction,
+		lastEventAt: Number.isFinite(lastEventAt) ? lastEventAt : null
 	};
 }
 
@@ -123,4 +153,9 @@ export function buildDashboard(
  */
 export function shoppingList(rows: DashboardRow[]): DashboardRow[] {
 	return rows.filter((r) => r.status === 'restock' || r.status === 'depleted');
+}
+
+/** 在庫わずか: 手動モードで残量が閾値以下の品目(ADR 0013)。購入等で閾値を上回れば外れる。 */
+export function lowStockList(rows: DashboardRow[]): DashboardRow[] {
+	return rows.filter((r) => r.status === 'low');
 }

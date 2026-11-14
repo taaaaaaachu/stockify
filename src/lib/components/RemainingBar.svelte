@@ -10,7 +10,8 @@
 		unknown: 'var(--muted)',
 		ok: 'var(--ok)',
 		restock: 'var(--warn)',
-		depleted: 'var(--danger)'
+		depleted: 'var(--danger)',
+		low: 'var(--warn)'
 	};
 
 	const pct = $derived(fraction === null ? 0 : Math.round(fraction * 100));

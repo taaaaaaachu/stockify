@@ -7,9 +7,11 @@ import {
 	purchases,
 	ranouts,
 	adjustments,
+	usages,
 	subscriptions,
 	productLinks,
 	type StockItemRow,
+	type UsageRow,
 	type PurchaseRow,
 	type RanoutRow,
 	type AdjustmentRow,
@@ -21,7 +23,8 @@ import type {
 	RanOutEvent,
 	RemainingAdjustment,
 	StockItem,
-	Subscription
+	Subscription,
+	UsageEvent
 	, ProductLink
 } from '#lib/types.js';
 import type {
@@ -32,9 +35,13 @@ import type {
 	RanOutInput,
 	Snapshot,
 	StockItemInput,
-	SubscriptionInput
+	StockItemPatch,
+	SubscriptionInput,
+	UsageInput
 	, ProductLinkInput
 } from '#lib/repo/types.js';
+import { CURRENT_REMAINING_REQUIRED, USAGE_NOT_MANUAL } from '#lib/repo/types.js';
+import { switchNeedsCurrentRemaining } from '#lib/domain/estimate.js';
 import { deliveryPurchaseId, generateDueDeliveries } from '#lib/domain/subscription.js';
 
 // --- 行 → ドメイン型 ---
@@ -46,7 +53,9 @@ function toItem(r: StockItemRow): StockItem {
 		unit: r.unit,
 		category: r.category,
 		leadTimeDays: r.leadTimeDays,
-		provisionalDaysToDeplete: r.provisionalDaysToDeplete
+		provisionalDaysToDeplete: r.provisionalDaysToDeplete,
+		trackingMode: r.trackingMode,
+		lowStockThreshold: r.lowStockThreshold
 	};
 }
 const toPurchase = (r: PurchaseRow): Purchase => ({
@@ -64,6 +73,7 @@ const toAdjustment = (r: AdjustmentRow): RemainingAdjustment => ({
 	at: r.at,
 	remaining: r.remaining
 });
+const toUsage = (r: UsageRow): UsageEvent => ({ id: r.id, itemId: r.itemId, at: r.at, volume: r.volume });
 const toSubscription = (r: SubscriptionRow): Subscription => ({
 	id: r.id,
 	itemId: r.itemId,
@@ -96,7 +106,7 @@ export function itemInHousehold(db: Db, householdId: string, itemId: string): bo
 function childItemId(
 	db: Db,
 	householdId: string,
-	table: typeof purchases | typeof ranouts | typeof adjustments | typeof subscriptions | typeof productLinks,
+	table: typeof purchases | typeof ranouts | typeof adjustments | typeof usages | typeof subscriptions | typeof productLinks,
 	id: string
 ): string | null {
 	const row = db
@@ -117,7 +127,7 @@ function childItemId(
 function findExistingChild<T>(
 	db: Db,
 	householdId: string,
-	table: typeof purchases | typeof ranouts | typeof adjustments | typeof subscriptions | typeof productLinks,
+	table: typeof purchases | typeof ranouts | typeof adjustments | typeof usages | typeof subscriptions | typeof productLinks,
 	id: string
 ): T | null | undefined {
 	const row = db.select().from(table).where(eq(table.id, id)).get();
@@ -179,11 +189,16 @@ export function createItem(
 	return toItem(row);
 }
 
+/**
+ * 品目を変更する。推定 → 手動の切替では currentRemaining が必須で(無ければ例外)、
+ * 同じトランザクションで now 時点の残量補正として記録し新しいアンカーにする(ADR 0013)。
+ */
 export function updateItem(
 	db: Db,
 	householdId: string,
 	id: string,
-	patch: Partial<StockItemInput>
+	{ currentRemaining, adjustmentId, ...patch }: StockItemPatch,
+	now: number = Date.now()
 ): StockItem | null {
 	const existing = db
 		.select()
@@ -191,8 +206,19 @@ export function updateItem(
 		.where(and(eq(stockItems.id, id), eq(stockItems.householdId, householdId)))
 		.get();
 	if (!existing) return null;
+	const anchor = switchNeedsCurrentRemaining(existing.trackingMode, patch.trackingMode);
+	if (anchor && currentRemaining === undefined) throw new Error(CURRENT_REMAINING_REQUIRED);
 	const updated = { ...existing, ...patch };
-	db.update(stockItems).set(updated).where(eq(stockItems.id, id)).run();
+	db.transaction((tx) => {
+		tx.update(stockItems).set(updated).where(eq(stockItems.id, id)).run();
+		if (anchor) {
+			tx.insert(adjustments)
+				.values({ id: adjustmentId ?? randomUUID(), itemId: id, at: now, remaining: currentRemaining! })
+				// 同じ切替の再送(ADR 0009)では二重に記録しない。
+				.onConflictDoNothing()
+				.run();
+		}
+	});
 	return toItem(updated);
 }
 
@@ -369,6 +395,31 @@ export function deleteAdjustment(db: Db, householdId: string, id: string): boole
 	return true;
 }
 
+// --- 使用(手動モードのみ) ---
+
+/** 使用を記録する。推定モードの品目なら例外(ADR 0013)。 */
+export function createUsageEvent(
+	db: Db,
+	householdId: string,
+	input: UsageInput,
+	id: string = randomUUID()
+): UsageEvent | null {
+	const item = getItem(db, householdId, input.itemId);
+	if (!item) return null;
+	const existing = findExistingChild<UsageRow>(db, householdId, usages, id);
+	if (existing !== undefined) return existing && toUsage(existing);
+	if (item.trackingMode !== 'manual') throw new Error(USAGE_NOT_MANUAL);
+	const row: UsageRow = { id, ...input };
+	db.insert(usages).values(row).run();
+	return toUsage(row);
+}
+
+export function deleteUsageEvent(db: Db, householdId: string, id: string): boolean {
+	if (!childItemId(db, householdId, usages, id)) return false;
+	db.delete(usages).where(eq(usages.id, id)).run();
+	return true;
+}
+
 // --- 定期便 ---
 
 export function createSubscription(
@@ -411,11 +462,12 @@ export function listBundles(db: Db, householdId: string): ItemBundle[] {
 	const items = db.select().from(stockItems).where(eq(stockItems.householdId, householdId)).all();
 	const ids = items.map((i) => i.id);
 	if (ids.length === 0) return [];
-	const [pls, ps, rs, as, ss] = [
+	const [pls, ps, rs, as, us, ss] = [
 		db.select().from(productLinks).where(inArray(productLinks.itemId, ids)).all(),
 		db.select().from(purchases).where(inArray(purchases.itemId, ids)).all(),
 		db.select().from(ranouts).where(inArray(ranouts.itemId, ids)).all(),
 		db.select().from(adjustments).where(inArray(adjustments.itemId, ids)).all(),
+		db.select().from(usages).where(inArray(usages.itemId, ids)).all(),
 		db.select().from(subscriptions).where(inArray(subscriptions.itemId, ids)).all()
 	];
 	return items.map((item) => ({
@@ -424,6 +476,7 @@ export function listBundles(db: Db, householdId: string): ItemBundle[] {
 		purchases: ps.filter((p) => p.itemId === item.id).map(toPurchase),
 		ranOutEvents: rs.filter((r) => r.itemId === item.id).map(toRanout),
 		adjustments: as.filter((a) => a.itemId === item.id).map(toAdjustment),
+		usageEvents: us.filter((u) => u.itemId === item.id).map(toUsage),
 		subscriptions: ss.filter((s) => s.itemId === item.id).map(toSubscription)
 	}));
 }
@@ -443,6 +496,7 @@ export function getBundle(db: Db, householdId: string, itemId: string): ItemBund
 			.where(eq(adjustments.itemId, itemId))
 			.all()
 			.map(toAdjustment),
+		usageEvents: db.select().from(usages).where(eq(usages.itemId, itemId)).all().map(toUsage),
 		subscriptions: db
 			.select()
 			.from(subscriptions)
@@ -461,6 +515,7 @@ export function exportAll(db: Db, householdId: string): Snapshot {
 		purchases: bundles.flatMap((b) => b.purchases),
 		ranOutEvents: bundles.flatMap((b) => b.ranOutEvents),
 		adjustments: bundles.flatMap((b) => b.adjustments),
+		usageEvents: bundles.flatMap((b) => b.usageEvents ?? []),
 		subscriptions: bundles.flatMap((b) => b.subscriptions)
 	};
 }
@@ -488,7 +543,10 @@ export function importSnapshot(
 					unit: item.unit,
 					category: item.category ?? null,
 					leadTimeDays: item.leadTimeDays ?? null,
-					provisionalDaysToDeplete: item.provisionalDaysToDeplete ?? null
+					provisionalDaysToDeplete: item.provisionalDaysToDeplete ?? null,
+					// 旧データには無いので推定モード扱い。
+					trackingMode: item.trackingMode === 'manual' ? 'manual' : 'estimated',
+					lowStockThreshold: item.lowStockThreshold ?? null
 				})
 				.run();
 			itemCount++;
@@ -514,6 +572,11 @@ export function importSnapshot(
 			const itemId = idMap.get(a.itemId);
 			if (!itemId) continue;
 			tx.insert(adjustments).values({ id: randomUUID(), itemId, at: a.at, remaining: a.remaining }).run();
+		}
+		for (const u of snapshot.usageEvents ?? []) {
+			const itemId = idMap.get(u.itemId);
+			if (!itemId) continue;
+			tx.insert(usages).values({ id: randomUUID(), itemId, at: u.at, volume: u.volume }).run();
 		}
 		for (const s of snapshot.subscriptions) {
 			const itemId = idMap.get(s.itemId);

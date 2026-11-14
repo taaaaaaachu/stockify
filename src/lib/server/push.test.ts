@@ -53,7 +53,9 @@ describe('dueItemNamesForUser', () => {
 			unit: 'ml',
 			category: null,
 			leadTimeDays: null,
-			provisionalDaysToDeplete: 30
+			provisionalDaysToDeplete: 30,
+			trackingMode: 'estimated',
+			lowStockThreshold: null
 		})!;
 		stock.createPurchase(db, hh, { itemId: item.id, volume: 300, price: null, purchasedAt: day(0), source: 'manual' });
 		// 推奨は 23日目。25日時点では due。
@@ -70,7 +72,9 @@ describe('dueItemNamesForUser', () => {
 				unit: 'ml',
 				category: null,
 				leadTimeDays: null,
-				provisionalDaysToDeplete: 30
+				provisionalDaysToDeplete: 30,
+				trackingMode: 'estimated',
+				lowStockThreshold: null
 			})!;
 			stock.createPurchase(db, hh, { itemId: item.id, volume: 300, price: null, purchasedAt: day(0), source: 'manual' });
 		};
@@ -93,7 +97,9 @@ describe('notifyDueRestocks', () => {
 			unit: 'ml',
 			category: null,
 			leadTimeDays: null,
-			provisionalDaysToDeplete: 30
+			provisionalDaysToDeplete: 30,
+			trackingMode: 'estimated',
+			lowStockThreshold: null
 		})!;
 		stock.createPurchase(db, hh, { itemId: item.id, volume: 300, price: null, purchasedAt: day(0), source: 'manual' });
 	}
@@ -165,5 +171,23 @@ describe('matchesNotifySlot', () => {
 		expect(normalizeNotifyMinute(547)).toBe(540);
 		expect(normalizeNotifyMinute(555)).toBe(555);
 		expect(normalizeNotifyMinute(569)).toBe(555);
+	});
+});
+
+describe('dueItemNamesForUser: 手動モードの在庫わずか(ADR 0013)', () => {
+	it('閾値以下の手動品目を集め、購入で閾値を上回れば外す', () => {
+		const item = stock.createItem(db, hh, {
+			name: '電池',
+			unit: '本',
+			category: null,
+			leadTimeDays: null,
+			provisionalDaysToDeplete: null,
+			trackingMode: 'manual',
+			lowStockThreshold: 2
+		})!;
+		stock.createPurchase(db, hh, { itemId: item.id, volume: 1, price: null, purchasedAt: day(0), source: 'manual' });
+		expect(dueItemNamesForUser(db, userId, day(365))).toEqual(['電池']);
+		stock.createPurchase(db, hh, { itemId: item.id, volume: 2, price: null, purchasedAt: day(1), source: 'manual' });
+		expect(dueItemNamesForUser(db, userId, day(365))).toEqual([]);
 	});
 });

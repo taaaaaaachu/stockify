@@ -3,7 +3,8 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { createDb, type Db } from './db';
 import { registerUser, createHousehold } from './households';
 import * as stock from './stock';
-import { MS_PER_DAY } from '#lib/domain/estimate.js';
+import { estimate, estimateInputFromItem, MS_PER_DAY } from '#lib/domain/estimate.js';
+import { CURRENT_REMAINING_REQUIRED, USAGE_NOT_MANUAL, type Snapshot } from '#lib/repo/types.js';
 
 let db: Db;
 let hhA: string;
@@ -18,7 +19,9 @@ const itemInput = (name = '洗剤') => ({
 	unit: 'ml',
 	category: null,
 	leadTimeDays: null,
-	provisionalDaysToDeplete: 30
+	provisionalDaysToDeplete: 30,
+	trackingMode: 'estimated' as const,
+	lowStockThreshold: null
 });
 
 beforeEach(() => {
@@ -76,7 +79,7 @@ describe('購入と所有チェック', () => {
 
 	it('購入を世帯内で更新できる', () => {
 		const item = stock.createItem(db, hhA, {
-			name: '洗剤', unit: 'ml', category: null, leadTimeDays: null, provisionalDaysToDeplete: null
+			...itemInput(), provisionalDaysToDeplete: null
 		})!;
 		const purchase = stock.createPurchase(db, hhA, {
 			itemId: item.id, volume: 500, price: 300, purchasedAt: 1, source: 'manual'
@@ -175,6 +178,7 @@ describe('materializeDueSubscriptions(サーバー)', () => {
 
 describe('importSnapshot', () => {
 	it('スナップショットを世帯へ追記し、id を採番し直して親子を維持する', () => {
+		// 管理モード(ADR 0013)導入前のデータ: trackingMode / lowStockThreshold が無い。
 		const snapshot = {
 			settings: { defaultLeadTimeDays: 99 },
 			items: [
@@ -185,12 +189,13 @@ describe('importSnapshot', () => {
 			ranOutEvents: [{ id: 'r1', itemId: 'old-1', at: day(5) }],
 			adjustments: [],
 			subscriptions: []
-		};
+		} as unknown as Snapshot;
 		const res = stock.importSnapshot(db, hhA, snapshot);
 		expect(res.items).toBe(1);
 		const bundles = stock.listBundles(db, hhA);
 		expect(bundles).toHaveLength(1);
 		expect(bundles[0].item.id).not.toBe('old-1'); // 採番し直し
+		expect(bundles[0].item).toMatchObject({ trackingMode: 'estimated', lowStockThreshold: null });
 		expect(bundles[0].purchases).toHaveLength(1);
 		expect(bundles[0].productLinks?.[0].url).toBe('https://example.com/item');
 		expect(bundles[0].ranOutEvents).toHaveLength(1);
@@ -268,5 +273,69 @@ describe('クライアント採番 ID と再送の冪等性(ADR 0009)', () => {
 		const r = stock.materializeDueSubscriptions(db, hhA, day(65));
 		expect(r.generatedPurchases).toBe(2);
 		expect(stock.listPurchases(db, hhA, item.id)).toHaveLength(3);
+	});
+});
+
+describe('手動モード(ADR 0013)', () => {
+	const remainingOf = (itemId: string, now: number) => {
+		const b = stock.getBundle(db, hhA, itemId)!;
+		return estimate(
+			estimateInputFromItem(b.item, { defaultLeadTimeDays: 7, nextSubscriptionDeliveryAt: null, ...b }),
+			now
+		).remaining;
+	};
+
+	it('推定 → 手動は currentRemaining が無ければエラーで、何も変わらない', () => {
+		const item = stock.createItem(db, hhA, itemInput())!;
+		expect(() => stock.updateItem(db, hhA, item.id, { trackingMode: 'manual' })).toThrow(CURRENT_REMAINING_REQUIRED);
+		expect(stock.getItem(db, hhA, item.id)?.trackingMode).toBe('estimated');
+		expect(stock.getBundle(db, hhA, item.id)?.adjustments).toEqual([]);
+	});
+
+	it('切替時の currentRemaining がアンカーになり、その後の購入・使用で増減する', () => {
+		const item = stock.createItem(db, hhA, itemInput())!;
+		stock.createPurchase(db, hhA, { itemId: item.id, volume: 300, price: null, purchasedAt: day(0), source: 'manual' });
+		const switched = stock.updateItem(db, hhA, item.id, { trackingMode: 'manual', lowStockThreshold: 2, currentRemaining: 5 }, day(10));
+		expect(switched).toMatchObject({ trackingMode: 'manual', lowStockThreshold: 2 });
+		expect(stock.getBundle(db, hhA, item.id)?.adjustments).toMatchObject([{ at: day(10), remaining: 5 }]);
+		expect(remainingOf(item.id, day(100))).toBe(5);
+
+		stock.createPurchase(db, hhA, { itemId: item.id, volume: 2, price: null, purchasedAt: day(20), source: 'manual' });
+		stock.createUsageEvent(db, hhA, { itemId: item.id, at: day(30), volume: 4 });
+		expect(remainingOf(item.id, day(100))).toBe(3);
+	});
+
+	it('同じ adjustmentId での再送は補正を二重に記録しない', () => {
+		const item = stock.createItem(db, hhA, itemInput())!;
+		const patch = { trackingMode: 'manual' as const, currentRemaining: 5, adjustmentId: 'adj-1' };
+		stock.updateItem(db, hhA, item.id, patch, day(1));
+		stock.updateItem(db, hhA, item.id, { ...patch, trackingMode: 'estimated' }, day(2));
+		stock.updateItem(db, hhA, item.id, patch, day(3));
+		expect(stock.getBundle(db, hhA, item.id)?.adjustments).toHaveLength(1);
+	});
+
+	it('手動 → 推定は currentRemaining なしで切り替えられる', () => {
+		const item = stock.createItem(db, hhA, { ...itemInput(), trackingMode: 'manual' })!;
+		expect(stock.updateItem(db, hhA, item.id, { trackingMode: 'estimated' })?.trackingMode).toBe('estimated');
+	});
+
+	it('使用は手動モードの品目にだけ記録・削除でき、別世帯からは触れない', () => {
+		const est = stock.createItem(db, hhA, itemInput())!;
+		expect(() => stock.createUsageEvent(db, hhA, { itemId: est.id, at: day(1), volume: 1 })).toThrow(USAGE_NOT_MANUAL);
+		const man = stock.createItem(db, hhA, { ...itemInput('電池'), trackingMode: 'manual' })!;
+		expect(stock.createUsageEvent(db, hhB, { itemId: man.id, at: day(1), volume: 1 })).toBeNull();
+		const u = stock.createUsageEvent(db, hhA, { itemId: man.id, at: day(1), volume: 1 })!;
+		expect(stock.deleteUsageEvent(db, hhB, u.id)).toBe(false);
+		expect(stock.deleteUsageEvent(db, hhA, u.id)).toBe(true);
+		expect(stock.getBundle(db, hhA, man.id)?.usageEvents).toEqual([]);
+	});
+
+	it('エクスポート → 取り込みで管理モード・閾値・使用が引き継がれる', () => {
+		const man = stock.createItem(db, hhA, { ...itemInput('電池'), trackingMode: 'manual', lowStockThreshold: 2 })!;
+		stock.createUsageEvent(db, hhA, { itemId: man.id, at: day(1), volume: 3 });
+		stock.importSnapshot(db, hhB, stock.exportAll(db, hhA));
+		const [b] = stock.listBundles(db, hhB);
+		expect(b.item).toMatchObject({ trackingMode: 'manual', lowStockThreshold: 2 });
+		expect(b.usageEvents).toMatchObject([{ at: day(1), volume: 3 }]);
 	});
 });

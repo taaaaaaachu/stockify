@@ -2,8 +2,9 @@
 	import { resolve } from '$app/paths';
 	import { store } from '#lib/app/store.svelte.js';
 	import { buildDashboard } from '#lib/domain/dashboard.js';
-	import { formatDepletion, formatQuantity } from '#lib/format.js';
+	import { formatDate, formatDepletion, formatQuantity } from '#lib/format.js';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
+	import ModeBadge from '#lib/components/ModeBadge.svelte';
 	import RemainingBar from '#lib/components/RemainingBar.svelte';
 	import { productLinkLabel } from '#lib/productLinks.js';
 
@@ -40,6 +41,7 @@
 						{#if row.item.category}
 							<span style="font-size:0.75rem; color:var(--muted);">{row.item.category}</span>
 						{/if}
+						<ModeBadge mode={row.item.trackingMode} />
 						{#if row.hasActiveSubscription}
 							<span
 								style="font-size:0.7rem; color:var(--accent); border:1px solid var(--accent);
@@ -57,8 +59,14 @@
 						style="display:flex; justify-content:space-between; margin-top:0.4rem;
 						       font-size:0.85rem; color:var(--muted);"
 					>
-						<span>残量 {formatQuantity(row.estimate.remainingClamped, row.item.unit)}</span>
-						<span>枯渇 {formatDepletion(row.estimate.depletionAt, store.now)}</span>
+						{#if row.item.trackingMode === 'manual'}
+							<!-- 手動モードは推定しないので、実数の残りと最終確認日だけ(ADR 0013)。 -->
+							<span>残り {formatQuantity(row.estimate.remainingClamped, row.item.unit)}</span>
+							<span>最終確認 {formatDate(row.lastEventAt)}</span>
+						{:else}
+							<span>残量 {formatQuantity(row.estimate.remainingClamped, row.item.unit)}</span>
+							<span>枯渇 {formatDepletion(row.estimate.depletionAt, store.now)}</span>
+						{/if}
 					</div>
 				</div>
 			</li>

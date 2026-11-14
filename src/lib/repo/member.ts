@@ -10,8 +10,11 @@ import type {
 	RanOutInput,
 	Repository,
 	StockItemInput,
-	SubscriptionInput
+	StockItemPatch,
+	SubscriptionInput,
+	UsageInput
 } from './types';
+import { switchNeedsCurrentRemaining } from '#lib/domain/estimate.js';
 
 /** 会員のローカル DB 名。ユーザー × 世帯ごとに分ける。 */
 export const MEMBER_DB_PREFIX = 'stockify-m-';
@@ -118,9 +121,15 @@ export class MemberRepository implements Repository {
 		await this.#enqueue(`品目「${input.name}」の追加`, 'POST', '/api/items', { ...input, id: item.id });
 		return item;
 	}
-	async updateItem(id: string, patch: Partial<StockItemInput>) {
-		const item = await this.#local.updateItem(id, patch);
-		await this.#enqueue(`品目「${item.name}」の変更`, 'PATCH', `/api/items/${id}`, patch);
+	async updateItem(id: string, patch: StockItemPatch) {
+		// 推定 → 手動の切替で記録する残量補正は、端末とサーバーで同じ ID にする(ADR 0013)。
+		const current = await this.#local.getItem(id);
+		const body =
+			current && switchNeedsCurrentRemaining(current.trackingMode, patch.trackingMode)
+				? { ...patch, adjustmentId: patch.adjustmentId ?? crypto.randomUUID() }
+				: patch;
+		const item = await this.#local.updateItem(id, body);
+		await this.#enqueue(`品目「${item.name}」の変更`, 'PATCH', `/api/items/${id}`, body);
 		return item;
 	}
 	async deleteItem(id: string) {
@@ -185,6 +194,16 @@ export class MemberRepository implements Repository {
 	async deleteAdjustment(id: string) {
 		await this.#local.deleteAdjustment(id);
 		await this.#enqueue('残量補正の削除', 'DELETE', `/api/adjustments/${id}`);
+	}
+
+	async createUsageEvent(input: UsageInput) {
+		const usage = await this.#local.createUsageEvent(input);
+		await this.#enqueue('使用の記録', 'POST', '/api/usages', { ...input, id: usage.id });
+		return usage;
+	}
+	async deleteUsageEvent(id: string) {
+		await this.#local.deleteUsageEvent(id);
+		await this.#enqueue('使用の削除', 'DELETE', `/api/usages/${id}`);
 	}
 
 	async createSubscription(input: SubscriptionInput) {

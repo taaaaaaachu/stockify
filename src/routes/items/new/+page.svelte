@@ -13,6 +13,9 @@
 	let firstDate = $state(localDateInput());
 	let firstPrice = $state('');
 	let provisionalDays = $state('30');
+	// 管理モード(ADR 0013)。手動は推定せず実数で管理する(電池・電球など)。
+	let trackingMode = $state<'estimated' | 'manual'>('estimated');
+	let lowStockThreshold = $state('');
 	let productLinks = $state([{ label: '', url: '' }]);
 	let saving = $state(false);
 	let error = $state('');
@@ -45,9 +48,15 @@
 			error = '初回の内容量を正の数で入力してください。';
 			return;
 		}
-		const prov = parseNumberOrNull(provisionalDays);
-		if (prov === null || prov <= 0) {
+		const manual = trackingMode === 'manual';
+		const prov = manual ? null : parseNumberOrNull(provisionalDays);
+		if (!manual && (prov === null || prov <= 0)) {
 			error = '「約何日で使い切るか」を正の数で入力してください。';
+			return;
+		}
+		const threshold = manual ? parseNumberOrNull(lowStockThreshold) : null;
+		if (threshold !== null && threshold < 0) {
+			error = '在庫わずかの閾値は 0 以上で入力してください。';
 			return;
 		}
 
@@ -57,8 +66,10 @@
 				name: name.trim(),
 				unit: unit.trim(),
 				category: category.trim() === '' ? null : category.trim(),
-				leadTimeDays: parseNumberOrNull(leadTime),
-				provisionalDaysToDeplete: prov
+				leadTimeDays: manual ? null : parseNumberOrNull(leadTime),
+				provisionalDaysToDeplete: prov,
+				trackingMode,
+				lowStockThreshold: threshold
 			});
 			await store.addPurchase({
 				itemId: id,
@@ -103,7 +114,19 @@
 	</div>
 
 	<fieldset style="border:1px solid var(--border); border-radius:0.5rem; padding:0.8rem;">
-		<legend style="padding:0 0.4rem; color:var(--muted);">初回購入</legend>
+		<legend style="padding:0 0.4rem; color:var(--muted);">管理モード</legend>
+		<label style="display:flex; gap:0.4rem; align-items:center;">
+			<input type="radio" bind:group={trackingMode} value="estimated" style="width:auto;" />
+			<span>推定(購入履歴から残量・枯渇予想を出す)</span>
+		</label>
+		<label style="display:flex; gap:0.4rem; align-items:center;">
+			<input type="radio" bind:group={trackingMode} value="manual" style="width:auto;" />
+			<span>手動(使った分を記録して実数で管理。たまにしか使わない品目向け)</span>
+		</label>
+	</fieldset>
+
+	<fieldset style="border:1px solid var(--border); border-radius:0.5rem; padding:0.8rem;">
+		<legend style="padding:0 0.4rem; color:var(--muted);">{trackingMode === 'manual' ? '今の在庫' : '初回購入'}</legend>
 		<div style="display:flex; gap:0.9rem; flex-wrap:wrap;">
 			<label style="display:flex; flex-direction:column; gap:0.25rem; flex:1;">
 				<span>内容量</span>
@@ -120,6 +143,13 @@
 		</div>
 	</fieldset>
 
+	{#if trackingMode === 'manual'}
+	<label style="display:flex; flex-direction:column; gap:0.25rem;">
+		<span>在庫わずかの閾値(任意)</span>
+		<input bind:value={lowStockThreshold} type="number" step="any" min="0" placeholder="例: 2" />
+		<small style="color:var(--muted);">残りがこの値以下になったら「在庫わずか」として知らせます。空欄なら知らせません。</small>
+	</label>
+	{:else}
 	<label style="display:flex; flex-direction:column; gap:0.25rem;">
 		<span>仮の見積り: この内容量を約何日で使い切る?</span>
 		<input bind:value={provisionalDays} type="number" step="any" min="0" />
@@ -133,6 +163,7 @@
 		<input bind:value={leadTime} type="number" step="any" min="0" placeholder="未入力なら全体既定" />
 		<small style="color:var(--muted);">購入推奨日を枯渇予想日の何日前にするか。空欄なら設定の既定値。</small>
 	</label>
+	{/if}
 
 	<fieldset style="border:1px solid var(--border); border-radius:0.5rem; padding:0.8rem;">
 		<legend style="padding:0 0.4rem; color:var(--muted);">商品リンク(任意)</legend>
