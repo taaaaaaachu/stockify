@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildDashboard, buildRow, lowStockList, shoppingList } from './dashboard';
+import { buildDashboard, buildRow, filterByMode, lowStockList, shoppingList } from './dashboard';
 import { MS_PER_DAY } from './estimate';
 import type { AppSettings, ItemBundle } from '#lib/repo/types.js';
 import type { Purchase, StockItem, Subscription } from '#lib/types.js';
@@ -237,5 +237,26 @@ describe('手動モード: 在庫わずか(ADR 0013)', () => {
 			day(10)
 		);
 		expect(row.lastEventAt).toBe(day(7)); // 未来の使用は数えない
+	});
+});
+
+describe('filterByMode', () => {
+	const rows = buildDashboard(
+		[
+			bundle({ item: item({ id: 'a', name: 'a' }), purchases: [purchase(0, 10, 'a')] }),
+			bundle({ item: item({ id: 'm', name: 'm', trackingMode: 'manual' }), purchases: [purchase(0, 10, 'm')] }),
+			bundle({ item: item({ id: 'b', name: 'b', provisionalDaysToDeplete: 5 }), purchases: [purchase(0, 10, 'b')] })
+		],
+		settings,
+		day(1)
+	);
+	const ids = (mode: Parameters<typeof filterByMode>[1]) => filterByMode(rows, mode).map((r) => r.item.id);
+
+	it('all は全件をそのままの順で返す', () => {
+		expect(ids('all')).toEqual(rows.map((r) => r.item.id));
+	});
+	it('モードごとに絞り込み、並び順は保つ', () => {
+		expect(ids('manual')).toEqual(['m']);
+		expect(ids('estimated')).toEqual(rows.map((r) => r.item.id).filter((id) => id !== 'm'));
 	});
 });
