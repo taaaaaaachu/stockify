@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { store } from '#lib/app/store.svelte.js';
-	import { buildDashboard } from '#lib/domain/dashboard.js';
+	import { buildDashboard, filterByMode } from '#lib/domain/dashboard.js';
 	import { formatDate, formatDepletion, formatQuantity } from '#lib/format.js';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import ModeBadge from '#lib/components/ModeBadge.svelte';
@@ -9,6 +9,13 @@
 	import { productLinkLabel } from '#lib/productLinks.js';
 
 	const rows = $derived(buildDashboard(store.bundles, store.settings, store.now));
+	const modes = [
+		{ value: 'all', label: 'すべて' },
+		{ value: 'estimated', label: '推定' },
+		{ value: 'manual', label: '手動' }
+	] as const;
+	let mode = $state<(typeof modes)[number]['value']>('all');
+	const shown = $derived(filterByMode(rows, mode));
 </script>
 
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
@@ -29,8 +36,26 @@
 		まだ品目がありません。「＋ 品目を追加」から最初の詰替え・消耗品を登録してください。
 	</p>
 {:else}
+	<div role="group" aria-label="管理モードで絞り込み" style="display:flex; gap:0.4rem; margin-bottom:0.8rem;">
+		{#each modes as m (m.value)}
+			<button
+				type="button"
+				aria-pressed={mode === m.value}
+				onclick={() => (mode = m.value)}
+				style="font-size:0.85rem; padding:0.2rem 0.7rem; border-radius:999px; cursor:pointer;
+				       border:1px solid {mode === m.value ? 'var(--accent)' : 'var(--border)'};
+				       background:{mode === m.value ? 'var(--accent)' : 'var(--card)'};
+				       color:{mode === m.value ? '#fff' : 'inherit'};"
+			>
+				{m.label}
+			</button>
+		{/each}
+	</div>
+	{#if shown.length === 0}
+		<p style="color:var(--muted);">該当する品目がありません。</p>
+	{/if}
 	<ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.6rem;">
-		{#each rows as row (row.item.id)}
+		{#each shown as row (row.item.id)}
 			<li>
 				<div
 					style="display:block; background:var(--card);

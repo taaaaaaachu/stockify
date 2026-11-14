@@ -1,4 +1,4 @@
-import type { ProductLink, StockItem } from '#lib/types.js';
+import type { ProductLink, StockItem, TrackingMode } from '#lib/types.js';
 import type { AppSettings, ItemBundle } from '#lib/repo/types.js';
 import { estimate, estimateInputFromItem, MS_PER_DAY, type Estimate } from './estimate';
 
@@ -158,4 +158,9 @@ export function shoppingList(rows: DashboardRow[]): DashboardRow[] {
 /** 在庫わずか: 手動モードで残量が閾値以下の品目(ADR 0013)。購入等で閾値を上回れば外れる。 */
 export function lowStockList(rows: DashboardRow[]): DashboardRow[] {
 	return rows.filter((r) => r.status === 'low');
+}
+
+/** 管理モードで絞り込む。'all' なら全件(並び順はそのまま)。 */
+export function filterByMode(rows: DashboardRow[], mode: TrackingMode | 'all'): DashboardRow[] {
+	return mode === 'all' ? rows : rows.filter((r) => r.item.trackingMode === mode);
 }
