@@ -73,8 +73,8 @@
 						<form onsubmit={saveEdit} style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:end;">
 							<label style="flex:1; min-width:8rem;"><span style="font-size:0.75rem;">表示名</span><input bind:value={editLabel} maxlength="100" /></label>
 							<label style="flex:2; min-width:12rem;"><span style="font-size:0.75rem;">URL</span><input bind:value={editUrl} maxlength="2048" type="url" required /></label>
-							<button type="submit">保存</button>
-							<button type="button" onclick={() => (editingId = null)}>やめる</button>
+							<button type="submit" style="background:var(--accent); color:#fff; border:none; border-radius:0.4rem; padding:0.35rem 0.6rem; cursor:pointer;">保存</button>
+							<button type="button" onclick={() => (editingId = null)} style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.35rem 0.6rem; cursor:pointer;">やめる</button>
 						</form>
 					{:else}
 						<div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
@@ -82,10 +82,10 @@
 							<a href={link.url} target="_blank" rel="noopener noreferrer" style="color:var(--accent);">{productLinkLabel(link)}</a>
 							<span style="font-size:0.75rem; color:var(--muted);">{index === 0 ? '既定' : ''}</span>
 							<span style="margin-left:auto; display:flex; gap:0.25rem;">
-								<button type="button" onclick={() => store.moveProductLink(link.id, 'up')} disabled={index === 0} aria-label="上へ">↑</button>
-								<button type="button" onclick={() => store.moveProductLink(link.id, 'down')} disabled={index === links.length - 1} aria-label="下へ">↓</button>
-								<button type="button" onclick={() => startEdit(link)}>編集</button>
-								<button type="button" onclick={() => remove(link.id)} style="color:var(--danger);">削除</button>
+								<button type="button" onclick={() => store.moveProductLink(link.id, 'up')} disabled={index === 0} aria-label="上へ" style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">↑</button>
+								<button type="button" onclick={() => store.moveProductLink(link.id, 'down')} disabled={index === links.length - 1} aria-label="下へ" style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">↓</button>
+								<button type="button" onclick={() => startEdit(link)} style="border:1px solid var(--border); background:var(--card); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">編集</button>
+								<button type="button" onclick={() => remove(link.id)} style="border:1px solid var(--danger); background:var(--card); color:var(--danger); border-radius:0.4rem; padding:0.3rem 0.6rem; cursor:pointer;">削除</button>
 							</span>
 						</div>
 					{/if}
